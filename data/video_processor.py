@@ -11,7 +11,6 @@ class VideoProcessor(object):
     """
     def __init__(self, 
                  sequence_path:str,
-                 sequence_name:str,
                  video_format:str='.avi'):
         """
         Constructor.
@@ -19,17 +18,14 @@ class VideoProcessor(object):
         Parameters
         ==========
         sequence_path: str
-            The path to the EFPL sequence (example: 'datasets/EFPL')
-        sequence_name: str
-            The name of the EFPL sequence (example: 'basketball')
+            The path to the EFPL dataset (example: 'datasets/EFPL')
         video_format: str
             The format of the video (exmaple: '.avi')
         """
         self.sequence_path = sequence_path
-        self.sequence_name = sequence_name
         self.video_format = video_format
 
-    def store_frames(self) -> None:
+    def store_frames(self, sequence_name) -> None:
         """
         For a list of videos, each representing a different camera in the same scene, 
         Loads the video using OpenCV, then saves all the individual frames on a folder inside 
@@ -37,15 +33,16 @@ class VideoProcessor(object):
 
         Parameters
         ==========
-        None
+        sequence_name: str
+            The name of the EFPL sequence (ex: "terrace")
         
         Returns
         ==========
         None
         """
         # Define the path where the videos from multiple cameras are
-        video_dir = osp.join(self.sequence_path, "videos", self.sequence_name)
-        frame_dir = osp.join(self.sequence_path, "frames", self.sequence_name)
+        video_dir = osp.join(self.sequence_path, "videos", sequence_name)
+        frame_dir = osp.join(self.sequence_path, "frames", sequence_name)
 
         cameras_videos = os.listdir(video_dir)
 
