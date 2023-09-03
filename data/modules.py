@@ -4,7 +4,7 @@ import numpy as np
 from ..models.reid.swin_transformer import swin_tiny_patch4_window7_224, swin_small_patch4_window7_224, swin_base_patch4_window7_224
 from torchvision import transforms
 
-class swin_reid_model(object):
+class SwinReidModel(object):
     def __init__(self, weights_path:str, device:str, swin_size:str='tiny', semantic_weight:float=1.0):
         super().__init__(self)
 
