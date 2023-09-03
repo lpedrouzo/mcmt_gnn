@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 import numpy as np
-from ..models.reid.swin_transformer import swin_tiny_patch4_window7_224, swin_small_patch4_window7_224, swin_base_patch4_window7_224
+from models.reid.swin_transformer import swin_tiny_patch4_window7_224, swin_small_patch4_window7_224, swin_base_patch4_window7_224
 from torchvision import transforms
 
 class SwinReidModel(object):
