@@ -144,7 +144,8 @@ class EmbeddingsProcessor(object):
     def store_embeddings(self):
 
         assert self.cnn_model is not None, "Embeddings CNN was not properly loaded."
-
+        print(f"Storing embeddings for sequence {self.sequence_name}")
+        
         # Create dirs to store embeddings (node embeddings)
         node_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
                                     'generic_detector', 'node')
