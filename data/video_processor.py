@@ -4,6 +4,7 @@ import time
 import numpy as np
 import pandas as pd
 import os.path as osp
+import json
 
 class VideoProcessor(object):
     """
@@ -24,7 +25,12 @@ class VideoProcessor(object):
         """
         self.sequence_path = sequence_path
         self.video_format = video_format
+        self.log_records = []
 
+    def _log_video_metadata(self, log_path, info_dict):
+        with open(log_path, 'w') as json_file:
+            json.dump(info_dict, json_file)
+                  
     def store_frames(self, sequence_name) -> None:
         """
         For a list of videos, each representing a different camera in the same scene, 
@@ -43,47 +49,55 @@ class VideoProcessor(object):
         # Define the path where the videos from multiple cameras are
         video_dir = osp.join(self.sequence_path, "videos", sequence_name)
         frame_dir = osp.join(self.sequence_path, "frames", sequence_name)
+        log_dir = osp.join(self.sequence_path, "logs", sequence_name)
 
         cameras_videos = os.listdir(video_dir)
 
         # Iterate over all cameras in the sequence and store images
         for single_camera_video in cameras_videos:
 
-                tStart = time.time()
-                print('Processing ' + single_camera_video)
+            tStart = time.time()
+            print('Processing ' + single_camera_video)
 
-                single_camera_path = osp.join(video_dir, single_camera_video)
+            # Load the video using OpenCV
+            video = cv2.VideoCapture(osp.join(video_dir, single_camera_video))
 
-                # Load the video using OpenCV
-                video = cv2.VideoCapture(single_camera_path)
+            # Define the output path 
+            output_dir = osp.join(frame_dir, 
+                                  single_camera_video.replace(self.video_format, ''))
+            
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
 
-                # Get video properties 
-                num_frames = video.get(cv2.CAP_PROP_FRAME_COUNT)
-                fps = video.get(cv2.CAP_PROP_FPS)
-                h = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                w = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_counter = 0
 
-                # Define the output path 
-                output_dir = osp.join(frame_dir, 
-                                      single_camera_video.replace(self.video_format, ''))
+            # Read video file and save image frames
+            while video.isOpened():
+
+                ret, frame = video.read()
+                frame_name = osp.join(output_dir, str(frame_counter).zfill(6) + ".jpg")
+                frame_counter += 1
+
+                if not ret:
+                    print("End of video file.")
+                    break
                 
-                if not os.path.exists(output_dir):
-                    os.makedirs(output_dir)
+                cv2.imwrite(frame_name, frame)
 
-                frame_counter = 0
+            tEnd = time.time()
 
-                # Read video file and save image frames
-                while video.isOpened():
+            # Log basic metadata about the video
+            self._log_video_metadata(
+                osp.join(log_dir, single_camera_video.replace(self.video_format, '.json')),
+                self.log_records.extend({
+                    "frame_width": int(video.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                    "frame_height": int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                    "fps": video.get(cv2.CAP_PROP_FPS),
+                    "num_frames": video.get(cv2.CAP_PROP_FRAME_COUNT),
+                    "frame_extraction_time": tEnd - tStart
+                })
+            )
 
-                    ret, frame = video.read()
-                    frame_name = osp.join(output_dir, str(frame_counter).zfill(6) + ".jpg")
-                    frame_counter += 1
+            print("Frame extraction took %f sec" % (tEnd - tStart))
 
-                    if not ret:
-                        print("End of video file.")
-                        break
-                    
-                    cv2.imwrite(frame_name, frame)
-
-                tEnd = time.time()
-                print("Frame extraction took %f sec" % (tEnd - tStart))
+        

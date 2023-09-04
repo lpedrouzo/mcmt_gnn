@@ -3,6 +3,7 @@ import os.path as osp
 import os
 import shutil
 import numpy as np
+import pandas as pd
 
 from bounding_box_dataset import BoundingBoxDataset
 from torch.utils.data import DataLoader
@@ -15,9 +16,7 @@ class EmbeddingsProcessor(object):
                  precomputed_embeddings:bool, 
                  frame_width:int, 
                  frame_height:int, 
-                 img_batch_size:int, 
-                 reid_embeddings_dir:str=None,
-                 node_embeddings_dir:str=None, 
+                 img_batch_size:int=None, 
                  cnn_model=None, 
                  img_size:tuple=None, 
                  sequence_path:str=None,
@@ -28,14 +27,12 @@ class EmbeddingsProcessor(object):
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.img_batch_size = img_batch_size
-        self.reid_embeddings_dir = reid_embeddings_dir
-        self.node_embeddings_dir = node_embeddings_dir
-        self.img_size = img_size
         self.sequence_path = sequence_path 
         self.sequence_name = sequence_name
+        self.img_size = img_size
         self.cnn_model = cnn_model
 
-    def load_appearance_data(self):
+    def load_appearance_data(self, det_df, node_embeds_path, reid_embeds_path):
         """
         Loads embeddings for node features and reid.
         Returns:
@@ -45,27 +42,23 @@ class EmbeddingsProcessor(object):
             assert self.cnn_model is not None
             
             # Compute embeddings from scatch using CNN
-            _, node_feats, reid_embeds = self._load_embeddings_from_imgs(det_df = self.graph_df,
-                                                                        cnn_model = self.cnn_model,
-                                                                        return_imgs = False,
-                                                                        use_cuda = self.inference_mode)
+            _, node_feats, reid_embeds = self._load_embeddings_from_imgs(det_df=det_df,
+                                                                        cnn_model=self.cnn_model,
+                                                                        return_imgs=False,
+                                                                        use_cuda=self.inference_mode)
         else:
-            # Load reid embeddings from filesystem
-            reid_embeds = self._load_precomputed_embeddings(det_df=self.graph_df,
-                                                           embeddings_dir=self.reid_embeddings_dir,
+            # Load node and reid embeddings from filesystem
+            reid_embeds = self._load_precomputed_embeddings(det_df=det_df,
+                                                            embeddings_dir=node_embeds_path,
+                                                            use_cuda=self.inference_mode)
+      
+            node_feats = self._load_precomputed_embeddings(det_df=det_df,
+                                                           embeddings_dir=reid_embeds_path,
                                                            use_cuda=self.inference_mode)
-            
-            if self.reid_embeddings_dir == self.node_embeddings_dir:
-                node_feats = reid_embeds.clone()
-
-            else:
-                # If node embeddings are not in the same filesystem, load them
-                node_feats = self._load_precomputed_embeddings(det_df=self.graph_df,
-                                                              embeddings_dir=self.node_embeddings_dir,
-                                                              use_cuda=self.inference_mode)
         return reid_embeds, node_feats
 
-    def _load_embeddings_from_imgs(self, det_df, cnn_model, return_imgs = False, use_cuda=True):
+
+    def _load_embeddings_from_imgs(self, det_df, return_imgs = False, use_cuda=True):
         """
         Computes embeddings for each detection in det_df with a CNN.
         Args:
@@ -90,7 +83,7 @@ class EmbeddingsProcessor(object):
                                 return_det_ids_and_frame=False)
         
         bb_loader = DataLoader(ds, batch_size=self.img_batch_size, pin_memory=True, num_workers=6)
-        cnn_model = cnn_model.eval()
+        cnn_model = self.cnn_model.eval()
 
         bb_imgs = []
         node_embeds = []
@@ -147,18 +140,35 @@ class EmbeddingsProcessor(object):
 
         return embeddings.to(torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu"))
 
+
     def store_embeddings(self):
 
         assert self.cnn_model is not None, "Embeddings CNN was not properly loaded."
-        assert self.reid_embeddings_dir is not None and self.node_embeddings_dir is not None, "Embedding directories were not defined!"
 
         # Create dirs to store embeddings (node embeddings)
         node_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic_detector', self.node_embeddings_dir)
+                                    'generic_detector', 'node')
 
         # reid embeddings
         reid_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic_detector', self.reid_embeddings_dir)
+                                    'generic_detector', 'reid')
+        
+        # Frames
+        frame_dir = osp.join(self.sequence_path, 'frames', self.sequence_name)
+        frame_cameras = os.listdir(frame_dir)
+
+        # Annotations
+        annotations_dir = osp.join(self.sequence_path, 'annotations', self.sequence_name)
+
+        # For each of the cameras, compute and store embeddings
+        for frame_camera in frame_cameras:
+            det_df = pd.read_csv(osp.join(annotations_dir, frame_camera + '.txt'), sep=' ')
+            self._store_embeddings_camera(det_df, 
+                                          osp.join(node_embeds_path, frame_camera),
+                                          osp.join(reid_embeds_path, frame_camera),
+                                          osp.join(frame_dir, frame_camera))
+        
+    def _store_embeddings_camera(self, det_df, node_embeds_path, reid_embeds_path, frame_dir):
 
         if osp.exists(node_embeds_path):
             print("Found existing stored node embeddings. Deleting them and replacing them for new ones")
@@ -175,22 +185,24 @@ class EmbeddingsProcessor(object):
         # If there are more than 100k detections, we split the df into smaller dfs avoid running out of RAM, as it
         # requires storing all embedding into RAM (~6 GB for 100k detections)
 
-        print(f"Computing embeddings for {self.det_df.shape[0]} detections")
+        print(f"Computing embeddings for {det_df.shape[0]} detections")
 
-        num_dets = self.det_df.shape[0]
+        num_dets = det_df.shape[0]
         max_dets_per_df = int(1e5) # Needs to be larger than the maximum amount of dets possible to have in one frame
 
-        frame_cutpoints = [self.det_df.frame.iloc[i] for i in np.arange(0, num_dets , max_dets_per_df, dtype=int)]
-        frame_cutpoints += [self.det_df.frame.iloc[-1] + 1]
+        frame_cutpoints = [det_df.frame.iloc[i] for i in np.arange(0, num_dets , max_dets_per_df, dtype=int)]
+        frame_cutpoints += [det_df.frame.iloc[-1] + 1]
 
         for frame_start, frame_end in zip(frame_cutpoints[:-1], frame_cutpoints[1:]):
-            sub_df_mask = self.det_df.frame.between(frame_start, frame_end - 1)
-            sub_df = self.det_df.loc[sub_df_mask]
+            sub_df_mask = det_df.frame.between(frame_start, frame_end - 1)
+            sub_df = det_df.loc[sub_df_mask]
 
             print(sub_df.frame.min(), sub_df.frame.max())
             bbox_dataset = BoundingBoxDataset(sub_df, 
+                                            frame_dir=frame_dir,
                                             frame_width=self.frame_width, 
                                             frame_height=self.frame_height, 
+                                            output_size=self.img_size,
                                             return_det_ids_and_frame=True)
             
             bbox_loader = DataLoader(bbox_dataset, 
