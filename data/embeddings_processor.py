@@ -115,9 +115,9 @@ class EmbeddingsProcessor(object):
             torch.Tensor with shape (num_detects, embeddings_dim)
 
         """
-        assert (self.sequence_name is not None and self.sequence_path is not None, 
-               "Make sure both sequence_name and sequence_path are defined"+
-               "in the constructor before calling load_precomputed_embeddings()")
+        assert self.sequence_name is not None and self.sequence_path is not None, \
+               "Make sure both sequence_name and sequence_path are defined"+ \
+               "in the constructor before calling load_precomputed_embeddings()"
         assert embeddings_dir is not None, "You need to define an embedings directory to load embeddings."
         
         # Retrieve the embeddings we need from their corresponding locations
@@ -145,7 +145,7 @@ class EmbeddingsProcessor(object):
 
         assert self.cnn_model is not None, "Embeddings CNN was not properly loaded."
         print(f"Storing embeddings for sequence {self.sequence_name}")
-        
+
         # Create dirs to store embeddings (node embeddings)
         node_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
                                     'generic_detector', 'node')
