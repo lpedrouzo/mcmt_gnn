@@ -5,7 +5,7 @@ import shutil
 import numpy as np
 import pandas as pd
 
-from bounding_box_dataset import BoundingBoxDataset
+from .bounding_box_dataset import BoundingBoxDataset
 from torch.utils.data import DataLoader
 from time import time
 
