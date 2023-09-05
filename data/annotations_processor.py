@@ -18,7 +18,7 @@ class AnnotationsProcessor(object):
             # Loading detections file and inserting column names
             det_df = pd.read_csv(osp.join(self.annotations_dir, annotation_path), 
                                  sep=self.delimiter, 
-                                 names=schema.keys(),
+                                 names=list(schema.keys()),
                                  dtype=schema)
 
             # Saving detections back to their original path
