@@ -21,7 +21,8 @@ class AnnotationsProcessor(object):
                                  names=column_names)
 
             # Saving detections back to their original path
-            pd.to_csv(annotation_path, sep=self.delimiter, index=False)
+            det_df.to_csv(osp.join(self.annotations_dir, annotation_path), 
+                          sep=self.delimiter, index=False)
 
     def sort_annotations_by_column(self, column):
         for annotation_path in self.annotations:
@@ -33,4 +34,5 @@ class AnnotationsProcessor(object):
             annotations_df = annotations_df.sort_values(by=column)
 
             # Saving detections back to their original path
-            pd.to_csv(annotation_path, sep=self.delimiter, index=False)
+            det_df.to_csv(osp.join(self.annotations_dir, annotation_path), 
+                          sep=self.delimiter, index=False)
