@@ -11,14 +11,15 @@ class AnnotationsProcessor(object):
         self.annotations_dir = osp.join(self.sequence_path, 'annotations', self.sequence_name)
         self.annotations = os.listdir(self.annotations_dir)
 
-    def apply_column_names(self, column_names):
+    def apply_schema(self, schema):
         for annotation_path in self.annotations:
             print(f"Procesing {annotation_path}")
 
             # Loading detections file and inserting column names
             det_df = pd.read_csv(osp.join(self.annotations_dir, annotation_path), 
                                  sep=self.delimiter, 
-                                 names=column_names)
+                                 names=schema.keys(),
+                                 dtype=schema)
 
             # Saving detections back to their original path
             det_df.to_csv(osp.join(self.annotations_dir, annotation_path), 
