@@ -27,8 +27,9 @@ class VideoProcessor(object):
         self.video_format = video_format
         self.log_records = []
 
-    def _log_video_metadata(self, log_path, info_dict):
-        with open(log_path, 'w') as json_file:
+    def _log_video_metadata(self, log_dir, single_camera_video, info_dict):
+        os.makedirs(log_dir, exist_ok=True)
+        with open(osp.join(log_dir, single_camera_video.replace(self.video_format, '.json')), 'w') as json_file:
             json.dump(info_dict, json_file)
                   
     def store_frames(self, sequence_name) -> None:
@@ -88,7 +89,8 @@ class VideoProcessor(object):
 
             # Log basic metadata about the video
             self._log_video_metadata(
-                osp.join(log_dir, single_camera_video.replace(self.video_format, '.json')),
+                log_dir,
+                single_camera_video,
                 self.log_records.extend({
                     "frame_width": int(video.get(cv2.CAP_PROP_FRAME_WIDTH)),
                     "frame_height": int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)),
