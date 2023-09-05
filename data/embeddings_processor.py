@@ -9,6 +9,8 @@ from .bounding_box_dataset import BoundingBoxDataset
 from torch.utils.data import DataLoader
 from time import time
 
+COL_NAMES_EPFL = ('id', 'xmin', 'ymin', 'xmax', 'ymax', 'frame', 'lost', 'occluded', 'generated','label')
+
 class EmbeddingsProcessor(object):
 
     def __init__(self, 
@@ -163,7 +165,7 @@ class EmbeddingsProcessor(object):
 
         # For each of the cameras, compute and store embeddings
         for frame_camera in frame_cameras:
-            det_df = pd.read_csv(osp.join(annotations_dir, frame_camera + '.txt'), sep=' ')
+            det_df = pd.read_csv(osp.join(annotations_dir, frame_camera + '.txt'), sep=' ', names=COL_NAMES_EPFL)
             self._store_embeddings_camera(det_df, 
                                           osp.join(node_embeds_path, frame_camera),
                                           osp.join(reid_embeds_path, frame_camera),
