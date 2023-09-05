@@ -22,7 +22,8 @@ class EmbeddingsProcessor(object):
                  cnn_model=None, 
                  img_size:tuple=None, 
                  sequence_path:str=None,
-                 sequence_name:str=None):
+                 sequence_name:str=None,
+                 num_workers:int=2):
         
         self.inference_mode = inference_mode
         self.precomputed_embeddings = precomputed_embeddings
@@ -33,6 +34,7 @@ class EmbeddingsProcessor(object):
         self.sequence_name = sequence_name
         self.img_size = img_size
         self.cnn_model = cnn_model
+        self.num_workers = num_workers
 
     def load_appearance_data(self, det_df, node_embeds_path, reid_embeds_path):
         """
@@ -84,7 +86,10 @@ class EmbeddingsProcessor(object):
                                 output_size=self.img_size,
                                 return_det_ids_and_frame=False)
         
-        bb_loader = DataLoader(ds, batch_size=self.img_batch_size, pin_memory=True, num_workers=6)
+        bb_loader = DataLoader(ds, 
+                               batch_size=self.img_batch_size, 
+                               pin_memory=True, num_workers=self.num_workers)
+        
         cnn_model = self.cnn_model.eval()
 
         bb_imgs = []
@@ -191,7 +196,7 @@ class EmbeddingsProcessor(object):
         print(f"Computing embeddings for {det_df.shape[0]} detections")
 
         num_dets = det_df.shape[0]
-        max_dets_per_df = int(1e5) # Needs to be larger than the maximum amount of dets possible to have in one frame
+        max_dets_per_df = int(1e4) # Needs to be larger than the maximum amount of dets possible to have in one frame
 
         frame_cutpoints = [det_df.frame.iloc[i] for i in np.arange(0, num_dets , max_dets_per_df, dtype=int)]
         frame_cutpoints += [det_df.frame.iloc[-1] + 1]
@@ -211,7 +216,7 @@ class EmbeddingsProcessor(object):
             bbox_loader = DataLoader(bbox_dataset, 
                                     batch_size=self.img_batch_size, 
                                     pin_memory=True,
-                                    num_workers=4)
+                                    num_workers=self.num_workers)
 
             # Feed all bboxes to the CNN to obtain node and reid embeddings
             self.cnn_model.eval()
