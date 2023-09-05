@@ -13,6 +13,8 @@ class AnnotationsProcessor(object):
 
     def apply_column_names(self, column_names):
         for annotation_path in self.annotations:
+            print(f"Procesing {annotation_path}")
+            
             # Loading detections file and inserting column names
             det_df = pd.read_csv(annotation_path, sep=self.delimiter, names=column_names)
 
@@ -21,6 +23,8 @@ class AnnotationsProcessor(object):
 
     def sort_annotations_by_column(self, column):
         for annotation_path in self.annotations:
+            print(f"Procesing {annotation_path}")
+
             # Loading detections file and sorting by column
             det_df = pd.read_csv(annotation_path, sep=self.delimiter)
             annotations_df = annotations_df.sort_values(by=column)
