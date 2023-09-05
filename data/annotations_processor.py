@@ -14,9 +14,11 @@ class AnnotationsProcessor(object):
     def apply_column_names(self, column_names):
         for annotation_path in self.annotations:
             print(f"Procesing {annotation_path}")
-            
+
             # Loading detections file and inserting column names
-            det_df = pd.read_csv(annotation_path, sep=self.delimiter, names=column_names)
+            det_df = pd.read_csv(osp.join(self.annotations_dir, annotation_path), 
+                                 sep=self.delimiter, 
+                                 names=column_names)
 
             # Saving detections back to their original path
             pd.to_csv(annotation_path, sep=self.delimiter, index=False)
@@ -26,7 +28,8 @@ class AnnotationsProcessor(object):
             print(f"Procesing {annotation_path}")
 
             # Loading detections file and sorting by column
-            det_df = pd.read_csv(annotation_path, sep=self.delimiter)
+            det_df = pd.read_csv(osp.join(self.annotations_dir, annotation_path), 
+                                 sep=self.delimiter)
             annotations_df = annotations_df.sort_values(by=column)
 
             # Saving detections back to their original path
