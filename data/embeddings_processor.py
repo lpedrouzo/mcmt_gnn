@@ -148,7 +148,7 @@ class EmbeddingsProcessor(object):
         return embeddings.to(torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu"))
 
 
-    def store_embeddings(self):
+    def store_embeddings(self, max_detections_per_df:int):
 
         assert self.cnn_model is not None, "Embeddings CNN was not properly loaded."
         print(f"Storing embeddings for sequence {self.sequence_name}")
@@ -174,9 +174,10 @@ class EmbeddingsProcessor(object):
             self._store_embeddings_camera(det_df, 
                                           osp.join(node_embeds_path, frame_camera),
                                           osp.join(reid_embeds_path, frame_camera),
-                                          osp.join(frame_dir, frame_camera))
+                                          osp.join(frame_dir, frame_camera),
+                                          max_detections_per_df)
         
-    def _store_embeddings_camera(self, det_df, node_embeds_path, reid_embeds_path, frame_dir):
+    def _store_embeddings_camera(self, det_df, node_embeds_path, reid_embeds_path, frame_dir, max_detections_per_df):
 
         if osp.exists(node_embeds_path):
             print("Found existing stored node embeddings. Deleting them and replacing them for new ones")
@@ -195,62 +196,60 @@ class EmbeddingsProcessor(object):
 
         print(f"Computing embeddings for {det_df.shape[0]} detections")
 
-        #num_dets = det_df.shape[0]
-        #max_dets_per_df = int(1e4) # Needs to be larger than the maximum amount of dets possible to have in one frame
+        num_dets = det_df.shape[0]
+        frame_cutpoints = [det_df.frame.iloc[i] for i in np.arange(0, num_dets , max_detections_per_df, dtype=int)]
+        frame_cutpoints += [det_df.frame.iloc[-1] + 1]
 
-        #frame_cutpoints = [det_df.frame.iloc[i] for i in np.arange(0, num_dets , max_dets_per_df, dtype=int)]
-        #frame_cutpoints += [det_df.frame.iloc[-1] + 1]
+        for frame_start, frame_end in zip(frame_cutpoints[:-1], frame_cutpoints[1:]):
+            sub_df_mask = det_df.frame.between(frame_start, frame_end - 1)
+            sub_df = det_df.loc[sub_df_mask]
 
-        #for frame_start, frame_end in zip(frame_cutpoints[:-1], frame_cutpoints[1:]):
-           # sub_df_mask = det_df.frame.between(frame_start, frame_end - 1)
-           # sub_df = det_df.loc[sub_df_mask]
+            print(sub_df.frame.min(), sub_df.frame.max())
+            bbox_dataset = BoundingBoxDataset(sub_df, 
+                                            frame_dir=frame_dir,
+                                            frame_width=self.frame_width, 
+                                            frame_height=self.frame_height, 
+                                            output_size=self.img_size,
+                                            return_det_ids_and_frame=True)
+            
+            bbox_loader = DataLoader(bbox_dataset, 
+                                    batch_size=self.img_batch_size, 
+                                    pin_memory=True,
+                                    num_workers=self.num_workers)
 
-           # print(sub_df.frame.min(), sub_df.frame.max())
-        bbox_dataset = BoundingBoxDataset(det_df, 
-                                        frame_dir=frame_dir,
-                                        frame_width=self.frame_width, 
-                                        frame_height=self.frame_height, 
-                                        output_size=self.img_size,
-                                        return_det_ids_and_frame=True)
-        
-        bbox_loader = DataLoader(bbox_dataset, 
-                                batch_size=self.img_batch_size, 
-                                pin_memory=True,
-                                num_workers=self.num_workers)
+            # Feed all bboxes to the CNN to obtain node and reid embeddings
+            self.cnn_model.eval()
+            node_embeds, reid_embeds = [], []
+            frame_nums, det_ids = [], []
+            
+            with torch.no_grad():
+                for frame_num, det_id, bboxes in bbox_loader:
+                    node_out, reid_out = self.cnn_model(bboxes.cuda())
+                    node_embeds.append(node_out.cpu())
+                    reid_embeds.append(reid_out.cpu())
+                    frame_nums.append(frame_num)
+                    det_ids.append(det_id)
 
-        # Feed all bboxes to the CNN to obtain node and reid embeddings
-        self.cnn_model.eval()
-        node_embeds, reid_embeds = [], []
-        frame_nums, det_ids = [], []
-        
-        with torch.no_grad():
-            for frame_num, det_id, bboxes in bbox_loader:
-                node_out, reid_out = self.cnn_model(bboxes.cuda())
-                node_embeds.append(node_out.cpu())
-                reid_embeds.append(reid_out.cpu())
-                frame_nums.append(frame_num)
-                det_ids.append(det_id)
+            det_ids = torch.cat(det_ids, dim=0)
+            frame_nums = torch.cat(frame_nums, dim=0)
 
-        det_ids = torch.cat(det_ids, dim=0)
-        frame_nums = torch.cat(frame_nums, dim=0)
+            node_embeds = torch.cat(node_embeds, dim=0)
+            reid_embeds = torch.cat(reid_embeds, dim=0)
 
-        node_embeds = torch.cat(node_embeds, dim=0)
-        reid_embeds = torch.cat(reid_embeds, dim=0)
+            # Add detection ids as first column of embeddings, to ensure that embeddings are loaded correctly
+            node_embeds = torch.cat((det_ids.view(-1, 1).float(), node_embeds), dim=1)
+            reid_embeds = torch.cat((det_ids.view(-1, 1).float(), reid_embeds), dim=1)
 
-        # Add detection ids as first column of embeddings, to ensure that embeddings are loaded correctly
-        node_embeds = torch.cat((det_ids.view(-1, 1).float(), node_embeds), dim=1)
-        reid_embeds = torch.cat((det_ids.view(-1, 1).float(), reid_embeds), dim=1)
+            # Save embeddings grouped by frame
+            for frame in sub_df.frame.unique():
+                mask = frame_nums == frame
+                frame_node_embeds = node_embeds[mask]
+                frame_reid_embeds = reid_embeds[mask]
 
-        # Save embeddings grouped by frame
-        for frame in det_df.frame.unique():
-            mask = frame_nums == frame
-            frame_node_embeds = node_embeds[mask]
-            frame_reid_embeds = reid_embeds[mask]
+                frame_node_embeds_path = osp.join(node_embeds_path, f"{frame}.pt")
+                frame_reid_embeds_path = osp.join(reid_embeds_path, f"{frame}.pt")
 
-            frame_node_embeds_path = osp.join(node_embeds_path, f"{frame}.pt")
-            frame_reid_embeds_path = osp.join(reid_embeds_path, f"{frame}.pt")
-
-            torch.save(frame_node_embeds, frame_node_embeds_path)
-            torch.save(frame_reid_embeds, frame_reid_embeds_path)
+                torch.save(frame_node_embeds, frame_node_embeds_path)
+                torch.save(frame_reid_embeds, frame_reid_embeds_path)
 
         print("Finished computing and storing embeddings")
