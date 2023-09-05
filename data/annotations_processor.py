@@ -31,7 +31,7 @@ class AnnotationsProcessor(object):
             # Loading detections file and sorting by column
             det_df = pd.read_csv(osp.join(self.annotations_dir, annotation_path), 
                                  sep=self.delimiter)
-            annotations_df = annotations_df.sort_values(by=column)
+            det_df = det_df.sort_values(by=column)
 
             # Saving detections back to their original path
             det_df.to_csv(osp.join(self.annotations_dir, annotation_path), 
