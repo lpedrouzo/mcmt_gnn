@@ -27,6 +27,7 @@ class BoundingBoxDataset(Dataset):
         self.frame_height = frame_height
         self.frame_dir = frame_dir
         self.pad_mode = pad_mode
+        self.pad = pad_
         self.transforms = Compose((Resize(output_size), ToTensor(), Normalize(mean=[0.485, 0.456, 0.406],
                                                                              std=[0.229, 0.224, 0.225])))
 
