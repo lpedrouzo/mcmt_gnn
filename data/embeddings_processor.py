@@ -14,8 +14,8 @@ class EmbeddingsProcessor(object):
     def __init__(self, 
                  inference_mode:str,
                  precomputed_embeddings:bool, 
-                 frame_width:int, 
-                 frame_height:int, 
+                 frame_width:int=None, 
+                 frame_height:int=None, 
                  img_batch_size:int=None, 
                  cnn_model=None, 
                  img_size:tuple=None, 
@@ -202,7 +202,7 @@ class EmbeddingsProcessor(object):
             sub_df_mask = det_df.frame.between(frame_start, frame_end - 1)
             sub_df = det_df.loc[sub_df_mask]
 
-            print(sub_df.frame.min(), sub_df.frame.max())
+            # print(sub_df.frame.min(), sub_df.frame.max())
             bbox_dataset = BoundingBoxDataset(sub_df, 
                                             frame_dir=frame_dir,
                                             frame_width=self.frame_width, 
