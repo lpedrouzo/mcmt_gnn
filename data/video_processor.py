@@ -12,6 +12,7 @@ class VideoProcessor(object):
     """
     def __init__(self, 
                  sequence_path:str,
+                 video_filename:str=None,
                  video_format:str='.avi'):
         """
         Constructor.
@@ -26,10 +27,11 @@ class VideoProcessor(object):
         self.sequence_path = sequence_path
         self.video_format = video_format
         self.log_records = []
+        self.video_filename = video_filename
 
     def _log_video_metadata(self, log_dir, single_camera_video, info_dict):
         os.makedirs(log_dir, exist_ok=True)
-        with open(osp.join(log_dir, single_camera_video.replace(self.video_format, '.json')), 'w') as json_file:
+        with open(osp.join(log_dir, single_camera_video+'.json'), 'w') as json_file:
             json.dump(info_dict, json_file)
                   
     def store_frames(self, sequence_name) -> None:
@@ -56,17 +58,23 @@ class VideoProcessor(object):
 
         # Iterate over all cameras in the sequence and store images
         for single_camera_video in cameras_videos:
+            
+            # Work the paths if the camera names are folders that store fixed filenames or if they are the videos themselves
+            if self.video_filename is not None:
+                single_camera_video_dir = osp.join(single_camera_video, self.video_filename)
+                frame_folder = single_camera_video
+            else:
+                single_camera_video_dir = single_camera_video
+                frame_folder = single_camera_video.replace(self.video_format, '')
 
             tStart = time.time()
             print('Processing ' + single_camera_video)
 
             # Load the video using OpenCV
-            video = cv2.VideoCapture(osp.join(video_dir, single_camera_video))
+            video = cv2.VideoCapture(osp.join(video_dir, single_camera_video_dir))
 
-            # Define the output path 
-            output_dir = osp.join(frame_dir, 
-                                  single_camera_video.replace(self.video_format, ''))
-            
+            # Define and create the output path 
+            output_dir = osp.join(frame_dir, frame_folder)
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
@@ -90,14 +98,14 @@ class VideoProcessor(object):
             # Log basic metadata about the video
             self._log_video_metadata(
                 log_dir,
-                single_camera_video,
-                self.log_records.extend({
+                frame_folder,
+                {
                     "frame_width": int(video.get(cv2.CAP_PROP_FRAME_WIDTH)),
                     "frame_height": int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)),
                     "fps": video.get(cv2.CAP_PROP_FPS),
                     "num_frames": video.get(cv2.CAP_PROP_FRAME_COUNT),
                     "frame_extraction_time": tEnd - tStart
-                })
+                }
             )
 
             print("Frame extraction took %f sec" % (tEnd - tStart))
