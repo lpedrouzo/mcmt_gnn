@@ -7,13 +7,13 @@ partitions = ("train","test")
 
 output_path_prefix = "datasets/AIC20"
 output_folders = ("frames", "videos", "annotations", "embeddings")
-
+items_to_move=["sc_ground_truth"]
 
 def create_output_folder(folder_type:str) -> str:
     """Create the output folder and return the path as a string.
     """
     output_path = osp.join(output_path_prefix, folder_type, sequence_name, camera_name)
-    os.makedirs(output_path)
+    os.makedirs(output_path, exist_ok=True)
     return output_path
 
 
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
             # Avoid hidden folders
             if not sequence_name.startswith("."):
-                
+
                 # Example of camera name: "c001"
                 sequence_path = osp.join(sequence_path_prefix, sequence_name)
                 for camera_name in os.listdir(sequence_path):
@@ -65,10 +65,16 @@ if __name__ == "__main__":
                     if not camera_name.startswith("."):
                         print(sequence_path, camera_name)
                         # 1. Move video from raw to output folder
-                        move_data_to_output_folder("vdo.avi", "videos")
+
+                        if "videos" in items_to_move:
+                            move_data_to_output_folder("vdo.avi", "videos")
 
                         # 2. Move annotations from raw to output folder
-                        move_data_to_output_folder("mtsc/mtsc_deepsort_ssd512.txt", "annotations")
+                        if "sc_estimates" in items_to_move:
+                            move_data_to_output_folder("mtsc/mtsc_deepsort_ssd512.txt", "annotations")
+
+                        if "sc_ground_truth" in items_to_move:
+                            move_data_to_output_folder("gt/gt.txt", "annotations")
 
     # Example of raw video: "datasets/raw/AIC20/train/S01/c001/vdo.avi"
     # Example of output video: "datasets/AIC20/videos/S01/c001/vdo.avi"

@@ -13,6 +13,8 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 model_path = 'models/reid/st_reid_weights.pth'
 model_size = 'tiny'
 semantic_weight = 1.0
+max_detections_per_df = 5000
+annotations_filename='gt.txt'
 swin_builder = None
 
 # Macros related to dataset
@@ -28,24 +30,29 @@ elif model_size == 'base':
 else:
     raise Exception(f"The only three valid options are (tiny, small, base). Your input was {model_size}")
 
-# Instantiate model and load weights (send to GPU if applicable)
-swin = swin_builder(convert_weights=False, semantic_weight=semantic_weight)
-swin.init_weights(model_path)
-swin.to(device)
-print(swin)
+
+if __name__ == '__main__':
+    # Instantiate model and load weights (send to GPU if applicable)
+    swin = swin_builder(convert_weights=False, semantic_weight=semantic_weight)
+    swin.init_weights(model_path)
+    swin.to(device)
+    print(swin)
 
 
-# Iterate over all of the sequences
-for sequence_name in os.listdir(osp.join(sequence_path, "annotations")):
+    # Iterate over all of the sequences
+    for sequence_name in os.listdir(osp.join(sequence_path, "annotations")):
 
-    # Instantiate the embeddings processor
-    emb_proc = EmbeddingsProcessor(inference_mode=False, 
-                                precomputed_embeddings=False,
-                                frame_width=360,
-                                frame_height=288,
-                                img_batch_size=32,
-                                img_size=(224,224),
-                                cnn_model=swin,
-                                sequence_path=sequence_path,
-                                sequence_name="basketball"
-                                )
+        # Instantiate the embeddings processor
+        emb_proc = EmbeddingsProcessor(inference_mode=False, 
+                                    precomputed_embeddings=False,
+                                    frame_width=1920,
+                                    frame_height=1080,
+                                    img_batch_size=32,
+                                    img_size=(224,224),
+                                    cnn_model=swin,
+                                    sequence_path=sequence_path,
+                                    sequence_name=sequence_name,
+                                    annotations_filename=annotations_filename
+                                    )
+        
+        emb_proc.store_embeddings(max_detections_per_df=max_detections_per_df)

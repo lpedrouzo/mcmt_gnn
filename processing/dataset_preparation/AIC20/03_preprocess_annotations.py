@@ -23,7 +23,7 @@ annotations_schema = {
 }
 
 sequence_path = "datasets/AIC20/"
-annotations_filename = "mtsc_deepsort_ssd512.txt"
+annotations_filename = "gt.txt"
 
 
 # Iterate over all of the sequences
