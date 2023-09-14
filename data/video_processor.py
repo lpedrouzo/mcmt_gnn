@@ -8,14 +8,14 @@ import json
 
 class VideoProcessor(object):
     """
-    This object is used to load videos and store indivual frames on filesystem.
+    This object is used to load videos and store individual frames on the filesystem.
     """
     def __init__(self, 
                  sequence_path:str,
                  video_filename:str=None,
                  video_format:str='.avi'):
         """
-        Constructor.
+        Object constructor.
 
         Parameters
         ==========
@@ -29,7 +29,29 @@ class VideoProcessor(object):
         self.log_records = []
         self.video_filename = video_filename
 
+
     def _log_video_metadata(self, log_dir, single_camera_video, info_dict):
+        """ Generate metadata logs about the video with:
+        - Image width
+        - Image Height
+        - frames per second
+        - Total number of frames
+        - Total time cost of extraction
+
+        Parameters
+        ===========
+        log_dir: str
+            The directory prefix where the log file is going to be.
+        single_camera_video: str
+            The name of the log filename. It should follow the name of the camera for a given
+            sequence.
+        info_dict: dict[str, Any]
+            The video metadata.
+
+        Returns
+        ===========
+        None
+        """
         os.makedirs(log_dir, exist_ok=True)
         with open(osp.join(log_dir, single_camera_video+'.json'), 'w') as json_file:
             json.dump(info_dict, json_file)
@@ -38,10 +60,20 @@ class VideoProcessor(object):
         """
         For a list of videos, each representing a different camera in the same scene, 
         Loads the video using OpenCV, then saves all the individual frames on a folder inside 
-        the original data path
+        the original data path.
+
+        The resulting frame path will follow:
+
+        '<sequence_path>/frames/<sequence_name>/<camera>.<video_format>
+
+        if <video_format> is passed to the constructor and <camera> is a file, not a folder. Else:
+        
+        '<sequence_path>/frames/<sequence_name>/<camera>/<video_filename>'
+
+        If <video_filename> is passed to the constructor and <camera is a folder, not a file.
 
         Parameters
-        ==========
+        ===========
         sequence_name: str
             The name of the EFPL sequence (ex: "terrace")
         
