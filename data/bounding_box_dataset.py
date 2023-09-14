@@ -39,9 +39,39 @@ class BoundingBoxDataset(Dataset):
         self.return_det_ids_and_frame = return_det_ids_and_frame
 
     def __len__(self):
+        """ Get the size of the dataset that is defined as the number of rows
+        in the annotations dataframe.
+
+        Parameters
+        ===========
+        None
+
+        Returns
+        ===========
+        dataset_len: int
+            The length of the dataset
+        """
         return self.det_df.shape[0]
 
     def __getitem__(self, ix):
+        """ Get a single annotations row using index ix.
+        Then, loads an image using opencv that corresponds to the detection defined in the annotation's row,
+        and performs the transformations defined in the constructor.
+
+        Parameters
+        ===========
+        ix: int
+            A torch.dataset managed index.
+        
+        Returns
+        ===========
+        row_frame: int
+            The frame id corresponding to the image patch.
+        row_id: int
+            The id of the tracked subject corresponding to the image patch.
+        bb_img: torch.tensor
+            The image patch corresponding to the bounding box detection.
+        """
         row = self.det_df.iloc[ix]
 
         # Load this bounding box' frame img, in case we haven't done it yet
