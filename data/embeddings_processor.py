@@ -21,6 +21,8 @@ class EmbeddingsProcessor(object):
                  img_size:tuple=None, 
                  sequence_path:str=None,
                  sequence_name:str=None,
+                 annotations_filename:str=None,
+                 annotations_sep:str=',',
                  num_workers:int=2):
         
         self.inference_mode = inference_mode
@@ -33,6 +35,8 @@ class EmbeddingsProcessor(object):
         self.img_size = img_size
         self.cnn_model = cnn_model
         self.num_workers = num_workers
+        self.annotations_filename = annotations_filename
+        self.annotations_sep = annotations_sep
 
     def load_appearance_data(self, det_df, node_embeds_path, reid_embeds_path):
         """
@@ -127,7 +131,7 @@ class EmbeddingsProcessor(object):
         
         # Retrieve the embeddings we need from their corresponding locations
         embeddings_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name, 
-                                   'generic_detector', embeddings_dir)
+                                   'generic' if self.annotations_filename is None else self.annotations_filename , embeddings_dir)
         print("Defined embeddings path is ", embeddings_path)
 
         frames_to_retrieve = sorted(det_df.frame.unique())
@@ -153,22 +157,28 @@ class EmbeddingsProcessor(object):
 
         # Create dirs to store embeddings (node embeddings)
         node_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic_detector', 'node')
+                                    'generic' if self.annotations_filename is None else self.annotations_filename, 'node')
 
         # reid embeddings
         reid_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic_detector', 'reid')
+                                    'generic' if self.annotations_filename is None else self.annotations_filename, 'reid')
         
         # Frames
         frame_dir = osp.join(self.sequence_path, 'frames', self.sequence_name)
         frame_cameras = os.listdir(frame_dir)
 
         # Annotations
-        annotations_dir = osp.join(self.sequence_path, 'annotations', self.sequence_name)
+        annotations_dir_prefix = osp.join(self.sequence_path, 'annotations', self.sequence_name)
 
         # For each of the cameras, compute and store embeddings
         for frame_camera in frame_cameras:
-            det_df = pd.read_csv(osp.join(annotations_dir, frame_camera + '.txt'), sep=' ')
+
+            if self.annotations_filename is not None:
+                annotations_dir = osp.join(frame_camera, self.annotations_filename)
+            else:
+                annotations_dir = frame_camera + '.txt'
+
+            det_df = pd.read_csv(osp.join(annotations_dir_prefix, annotations_dir), sep=self.annotations_sep)
             self._store_embeddings_camera(det_df, 
                                           osp.join(node_embeds_path, frame_camera),
                                           osp.join(reid_embeds_path, frame_camera),
