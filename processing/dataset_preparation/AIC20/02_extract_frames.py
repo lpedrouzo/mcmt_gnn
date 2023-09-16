@@ -10,7 +10,7 @@ sequence_path = "datasets/AIC20/"
 video_filename = "vdo.avi"
 
 # Instantiate the multi camera video processor
-vp = VideoProcessor(sequence_path=sequence_path,
+vp = VideoProcessor(sequence_path=sequence_path, 
                     video_filename=video_filename,
                     video_format='.avi')
 
