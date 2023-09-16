@@ -110,7 +110,7 @@ class VideoProcessor(object):
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
-            frame_counter = 0
+            frame_counter = 1
 
             # Read video file and save image frames
             while video.isOpened():

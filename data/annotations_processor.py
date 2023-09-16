@@ -2,6 +2,8 @@ import os.path as osp
 import os
 import json
 import pandas as pd
+import numpy as np
+from .utils import try_loading_logs
 
 class AnnotationsProcessor(object):
     """ This class is used to define pre-processing steps for the annotation files:
@@ -10,7 +12,7 @@ class AnnotationsProcessor(object):
     - sorting by column
     - standardizing bounding box columns regardless of the dataset
     """
-    def __init__(self, sequence_path, sequence_name, annotations_filename=None, delimiter=' '):
+    def __init__(self, sequence_path:str, sequence_name:str, annotations_filename:str=None, delimiter:str=' '):
         self.sequence_path = sequence_path
         self.sequence_name = sequence_name
         self.delimiter = delimiter
@@ -18,29 +20,9 @@ class AnnotationsProcessor(object):
 
         self.annotations_path_prefix = osp.join(self.sequence_path, 'annotations', self.sequence_name)
         self.annotations = os.listdir(self.annotations_path_prefix)
-
-    def _try_loading_logs(self, log_path):
-        """ Loads a JSON file with saved video metadata from the frame extraction process
-        in 02_extract_frames.py
-
-        Parameters
-        ===========
-        log_path: str
-            The path to the JSON file
-
-        Returns
-        ===========
-        json_data: dict[str, Any]
-            The video metadata.
-        """
-        if os.path.exists(log_path):
-            with open(log_path, 'r') as file:
-                return json.load(file)
-        else:
-            raise Exception("No Logfile Found. Most likely you have not used the VideoProcessor yet.")
         
 
-    def apply_schema(self, schema):
+    def apply_schema(self, schema:dict):
         """ Using a schema specification defined as a dictionary,
         Add the column names to the dataframe and enforce the specified
         datatypes in the schema. Finally, save the resulting annotation files
@@ -109,7 +91,7 @@ class AnnotationsProcessor(object):
         for annotation_folder in self.annotations:
             
             log_path = osp.join(self.sequence_path, "logs", self.sequence_name, annotation_folder+'.json')
-            log_data = self._try_loading_logs(log_path)
+            log_data = try_loading_logs(log_path)
 
             if self.annotations_filename is not None:
                 annotation_folder = osp.join(annotation_folder, self.annotations_filename)
@@ -122,15 +104,15 @@ class AnnotationsProcessor(object):
             # Adding xmax and ymax columns if not present in dataset
             if 'xmax' not in det_df.columns or 'ymax' not in det_df.columns:
                 xmax, ymax = det_df['xmin'] + det_df['width'], det_df['ymin'] + det_df['height']
-                det_df['xmax'] = xmax if log_data["frame_width"] > xmax else log_data["frame_width"]
-                det_df['ymax'] = ymax if log_data['frame_height'] > ymax else log_data['frame_height']
+                det_df['xmax'] = np.where(xmax.values < log_data["frame_width"], xmax.values, log_data["frame_width"])
+                det_df['ymax'] = np.where(ymax.values < log_data["frame_height"], ymax.values, log_data["frame_height"])
 
             # Adding width and height if not present in dataset
             elif 'width' not in det_df.columns or 'height' not in det_df.columns:
-                xmax = det_df['xmax'] if det_df['xmax'] < log_data['frame_width'] else log_data['frame_width']
-                ymax = det_df['ymax'] if det_df['ymax'] < log_data['frame_hegiht'] else log_data['frame_height']
-                det_df['width'] = xmax - det_df['xmin']
-                det_df['height'] = ymax - det_df['ymin']
+                xmax = np.where(det_df['xmax'].values < log_data['frame_width'], det_df['xmax'].values, log_data['frame_width'])
+                ymax = np.where(det_df['ymax'].values < log_data['frame_height'], det_df['ymax'].values, log_data['frame_height'])
+                det_df['width'] = xmax - det_df['xmin'].values
+                det_df['height'] = ymax - det_df['ymin'].values
 
             # Saving detections back to their original path
             det_df.to_csv(osp.join(self.annotations_path_prefix, annotation_folder), 

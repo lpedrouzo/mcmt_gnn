@@ -37,8 +37,11 @@ for sequence_name in os.listdir(osp.join(sequence_path, "annotations")):
 
     # The annotations are loading directly from path and stored back in the backend
     print("Applying schemas")
-    det_proc.apply_schema(annotations_schema)
+    #det_proc.apply_schema(annotations_schema)
 
     print("Sorting DataFrames")
-    det_proc.sort_annotations_by_column(column='frame')
+    #det_proc.sort_annotations_by_column(column='frame')
+
+    print("Standardizing bounding box coordinates")
+    det_proc.standardize_bounding_box_columns()
     
