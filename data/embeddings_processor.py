@@ -4,16 +4,20 @@ import os
 import shutil
 import numpy as np
 import pandas as pd
+import multiprocessing
 
+from .utils import try_loading_logs
 from .bounding_box_dataset import BoundingBoxDataset
 from torch.utils.data import DataLoader
 from time import time
+from tqdm import tqdm
+from functools import partial
 
 class EmbeddingsProcessor(object):
 
     def __init__(self, 
-                 inference_mode:str,
-                 precomputed_embeddings:bool, 
+                 inference_mode:bool,
+                 precomputed_embeddings:bool=None, 
                  frame_width:int=None, 
                  frame_height:int=None, 
                  img_batch_size:int=None, 
@@ -37,6 +41,7 @@ class EmbeddingsProcessor(object):
         self.num_workers = num_workers
         self.annotations_filename = annotations_filename
         self.annotations_sep = annotations_sep
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def load_appearance_data(self, det_df, node_embeds_path, reid_embeds_path):
         """
@@ -50,21 +55,18 @@ class EmbeddingsProcessor(object):
             # Compute embeddings from scatch using CNN
             _, node_feats, reid_embeds = self._load_embeddings_from_imgs(det_df=det_df,
                                                                         cnn_model=self.cnn_model,
-                                                                        return_imgs=False,
-                                                                        use_cuda=self.inference_mode)
+                                                                        return_imgs=False)
         else:
             # Load node and reid embeddings from filesystem
             reid_embeds = self._load_precomputed_embeddings(det_df=det_df,
-                                                            embeddings_dir=node_embeds_path,
-                                                            use_cuda=self.inference_mode)
+                                                            embeddings_dir=node_embeds_path)
       
             node_feats = self._load_precomputed_embeddings(det_df=det_df,
-                                                           embeddings_dir=reid_embeds_path,
-                                                           use_cuda=self.inference_mode)
+                                                           embeddings_dir=reid_embeds_path)
         return reid_embeds, node_feats
 
 
-    def _load_embeddings_from_imgs(self, det_df, return_imgs = False, use_cuda=True):
+    def _load_embeddings_from_imgs(self, det_df, return_imgs = False):
         """
         Computes embeddings for each detection in det_df with a CNN.
         Args:
@@ -80,7 +82,6 @@ class EmbeddingsProcessor(object):
             (bb_imgs for each det or [], torch.Tensor with shape (num_detects, node_embeddings_dim), torch.Tensor with shape (num_detects, reidembeddings_dim))
 
         """
-        device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
 
         ds = BoundingBoxDataset(det_df, 
                                 frame_width=self.frame_width, 
@@ -99,9 +100,9 @@ class EmbeddingsProcessor(object):
         reid_embeds = []
         with torch.no_grad():
             for bboxes in bb_loader:
-                node_out, reid_out = cnn_model(bboxes.cuda())
-                node_embeds.append(node_out.to(device))
-                reid_embeds.append(reid_out.to(device))
+                node_out, reid_out = cnn_model(bboxes.to(self.device))
+                node_embeds.append(node_out.to(self.device))
+                reid_embeds.append(reid_out.to(self.device))
 
                 if return_imgs:
                     bb_imgs.append(bboxes)
@@ -111,7 +112,7 @@ class EmbeddingsProcessor(object):
 
         return bb_imgs, node_embeds, reid_embeds
 
-    def _load_precomputed_embeddings(self, det_df, embeddings_dir, use_cuda):
+    def _load_precomputed_embeddings(self, det_df, embeddings_dir):
         """
         Given a sequence's detections, it loads from disk embeddings that have already been computed and stored for its
         detections
@@ -147,11 +148,46 @@ class EmbeddingsProcessor(object):
 
         embeddings = embeddings[:, 1:]  # Get rid of the detection index
 
-        return embeddings.to(torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu"))
+        return embeddings.to(self.device)
 
 
     def store_embeddings(self, max_detections_per_df:int):
+        """ Compute and store node and reid embeddings for all cameras in the sequence.
+        This method processes frames and annotations for each camera in the sequence and computes node
+        and reid embeddings for the detected objects in those frames. The embeddings are stored in separate
+        directories for node and reid embeddings.
 
+        Parameters:
+        -----------
+        max_detections_per_df : int
+            Maximum number of detections to process at once to avoid running out of memory.
+
+        Notes:
+        ------
+        This method processes each camera in the sequence, reading annotation data and frames, and then
+        calls the '_store_embeddings_camera' method to compute and store embeddings for each camera.
+
+        The embeddings are organized into the following directory structure:
+
+        - sequence_path_prefix
+            |- embeddings
+            | |- sequence_name
+            | |   |- annotations_filename
+            | |   |   |- < node | reid >
+            | |   |   |   |- camera_folder_1
+            | |   |   |   |  |- <frame_1>.pt
+            | |   |   |   |  |- <frame_2>.pt
+            | |   |   |   |  |- ...
+            | |   |   |   |- camera_folder_2
+            | |   |   |   |  |- <frame_1>.pt
+            | |   |   |   |  |- <frame_2>.pt
+            | |   |   |   |  |- ...
+            | |   |   |   |- ...
+
+        Returns:
+        --------
+        None
+        """
         assert self.cnn_model is not None, "Embeddings CNN was not properly loaded."
         print(f"Storing embeddings for sequence {self.sequence_name}")
 
@@ -170,6 +206,9 @@ class EmbeddingsProcessor(object):
         # Annotations
         annotations_dir_prefix = osp.join(self.sequence_path, 'annotations', self.sequence_name)
 
+        # Logs 
+        logs_dir_prefix = osp.join(self.sequence_path, 'logs', self.sequence_name)
+
         # For each of the cameras, compute and store embeddings
         for frame_camera in frame_cameras:
 
@@ -183,10 +222,45 @@ class EmbeddingsProcessor(object):
                                           osp.join(node_embeds_path, frame_camera),
                                           osp.join(reid_embeds_path, frame_camera),
                                           osp.join(frame_dir, frame_camera),
+                                          osp.join(logs_dir_prefix, frame_camera + '.json'),
                                           max_detections_per_df)
         
-    def _store_embeddings_camera(self, det_df, node_embeds_path, reid_embeds_path, frame_dir, max_detections_per_df):
 
+    def _store_embeddings_camera(self, det_df, node_embeds_path, reid_embeds_path, frame_dir, log_dir, max_detections_per_df):
+        """Store node and reid embeddings for detections in a camera.
+        This method processes detections from a DataFrame, computes node and reid embeddings for each detection,
+        and stores the embeddings in separate directories for node and reid embeddings.
+
+        Parameters:
+        -----------
+        det_df : pandas DataFrame
+            DataFrame containing detection information, including bounding boxes and frame numbers.
+        node_embeds_path : str
+            Path to the directory where node embeddings will be stored.
+        reid_embeds_path : str
+            Path to the directory where reid embeddings will be stored.
+        frame_dir : str
+            Directory containing frames where the detections occurred.
+        log_dir : str
+            Directory containing log data necessary to retrieve image width and height.
+        max_detections_per_df : int
+            Maximum number of detections to process at once to avoid running out of memory.
+
+        Notes:
+        ------
+        - This method processes the detections in chunks to avoid memory issues when processing a large number
+        of detections. It computes node and reid embeddings for each detection, and the embeddings are stored
+        in separate directories. Detection IDs are added as the first column in the embeddings to ensure correct
+        loading.
+
+        - The input DataFrame `det_df` should have columns for frame numbers, bounding box information, and detection IDs.
+
+        - The method uses the provided `log_dir` to retrieve image width and height information.
+
+        Returns:
+        --------
+        None
+        """
         if osp.exists(node_embeds_path):
             print("Found existing stored node embeddings. Deleting them and replacing them for new ones")
             shutil.rmtree(node_embeds_path)
@@ -198,6 +272,9 @@ class EmbeddingsProcessor(object):
         os.makedirs(node_embeds_path)
         os.makedirs(reid_embeds_path)
 
+        # We need this log data to retrieve image width and height
+        log_data = try_loading_logs(log_dir)
+
         # Compute and store embeddings
         # If there are more than 100k detections, we split the df into smaller dfs avoid running out of RAM, as it
         # requires storing all embedding into RAM (~6 GB for 100k detections)
@@ -208,15 +285,15 @@ class EmbeddingsProcessor(object):
         frame_cutpoints = [det_df.frame.iloc[i] for i in np.arange(0, num_dets , max_detections_per_df, dtype=int)]
         frame_cutpoints += [det_df.frame.iloc[-1] + 1]
 
-        for frame_start, frame_end in zip(frame_cutpoints[:-1], frame_cutpoints[1:]):
+        for frame_start, frame_end in tqdm(zip(frame_cutpoints[:-1], frame_cutpoints[1:])):
             sub_df_mask = det_df.frame.between(frame_start, frame_end - 1)
             sub_df = det_df.loc[sub_df_mask]
 
             # print(sub_df.frame.min(), sub_df.frame.max())
             bbox_dataset = BoundingBoxDataset(sub_df, 
                                             frame_dir=frame_dir,
-                                            frame_width=self.frame_width, 
-                                            frame_height=self.frame_height, 
+                                            frame_width=log_data['frame_width'], 
+                                            frame_height=log_data['frame_height'], 
                                             output_size=self.img_size,
                                             return_det_ids_and_frame=True)
             
@@ -232,7 +309,7 @@ class EmbeddingsProcessor(object):
             
             with torch.no_grad():
                 for frame_num, det_id, bboxes in bbox_loader:
-                    node_out, reid_out = self.cnn_model(bboxes.cuda())
+                    node_out, reid_out = self.cnn_model(bboxes.to(self.device))
                     node_embeds.append(node_out.cpu())
                     reid_embeds.append(reid_out.cpu())
                     frame_nums.append(frame_num)
@@ -261,3 +338,122 @@ class EmbeddingsProcessor(object):
                 torch.save(frame_reid_embeds, frame_reid_embeds_path)
 
         print("Finished computing and storing embeddings")
+
+
+    def _generate_average_embeddings_single_camera(self, input_path_prefix, output_path_prefix, camera_folder):
+        """Processes the embeddings for each frame within the specified camera folder,
+        computes the average embedding for each subject, and saves them individually in the
+        output directory.
+
+        Parameters
+        ===========
+        input_path_prefix : str
+            The path to the input directory containing frame-wise embeddings.
+        output_path_prefix : str
+            The path to the output directory where average embeddings will be saved.
+        camera_folder : str
+            The name of the camera folder being processed.
+        
+        Returns
+        ===========
+        None
+        """
+        camera_dir_prefix_frame = osp.join(input_path_prefix, camera_folder)
+        camera_dir_prefix_subject = osp.join(output_path_prefix, camera_folder)
+        os.makedirs(camera_dir_prefix_subject)
+
+        subject_sum_dict = {}
+        subject_count_dict = {}
+        
+        for frame in os.listdir(camera_dir_prefix_frame):
+
+            # Load embeddings at current frame
+            embeddings_frame = torch.load(osp.join(camera_dir_prefix_frame, frame))
+
+            # Iterate through the frames at the current index and sum the embeddings by subject
+            for embedding in embeddings_frame:
+                subject_id = int(embedding[0].cpu())
+
+                if subject_id not in subject_sum_dict:
+                    subject_sum_dict[subject_id] = embedding[1:]
+                    subject_count_dict[subject_id] = 1
+                else:
+                    subject_sum_dict[subject_id] += embedding[1:]
+                    subject_count_dict[subject_id] += 1
+
+        # For every subject, take the sum embedding and divide by count, then save to filesystem
+        for subject_id in subject_count_dict:
+            avg_subject_embed = (subject_sum_dict[subject_id] / subject_count_dict[subject_id]).cpu()
+            torch.save(avg_subject_embed, osp.join(camera_dir_prefix_subject, 'obj_' + str(subject_id) + '.pt'))
+
+
+    def generate_average_embeddings_single_camera(self):
+        """Process and generate average embeddings for all camera folders in the sequence.
+        This method processes all camera folders in the specified sequence, calculates the average
+        embeddings for subjects within each camera folder, and saves them in the designated output
+        directory. Multiprocessing to parallelize the processing of camera folders is used.
+
+        The input directory structure should follow the format:
+        - sequence_path_prefix
+            |- embeddings
+            | |- sequence_name
+            | |   |- annotations_filename
+            | |   |   |- node <----- IMPORTANT
+            | |   |   |   |- camera_folder_1
+            | |   |   |   |  |- <frame_1>.pt
+            | |   |   |   |  |- <frame_2>.pt
+            | |   |   |   |  |- ...
+            | |   |   |   |- camera_folder_2
+            | |   |   |   |  |- <frame_1>.pt
+            | |   |   |   |  |- <frame_2>.pt
+            | |   |   |   |  |- ...
+            | |   |   |   |- ...
+
+        The output directory structure will be organized as follows:
+        - sequence_path_prefix
+          |- embeddings
+          | |- sequence_name
+          | |   |- annotations_filename
+          | |   |   |- avg <---- IMPORTANT
+          | |   |   |   |- camera_folder_1
+          | |   |   |   |  |- obj_<subject_id_1>.pt
+          | |   |   |   |  |- obj_<subject_id_2>.pt
+          | |   |   |   |  |- ...
+          | |   |   |   |- camera_folder_2
+          | |   |   |   |  |- obj_<subject_id_1>.pt
+          | |   |   |   |  |- obj_<subject_id_2>.pt
+          | |   |   |   |  |- ...
+          | |   |   |   |- ...
+
+        If the output directory already exists, it will be deleted and recreated to store new average
+        embeddings.
+
+        Parameters
+        ============
+        None
+
+        Returns
+        ============
+        None
+        """
+        sequence_path_prefix = osp.join(self.sequence_path, "embeddings", self.sequence_name, self.annotations_filename)
+        frames_sequence_path_prefix = osp.join(sequence_path_prefix, "node")
+        subjects_sequence_path_prefix = osp.join(sequence_path_prefix, "avg")
+
+        # If output directories already exist, then delete them and create them again
+        if osp.exists(subjects_sequence_path_prefix):
+            print("Found existing average embeddings. Deleting them and replacing them for new ones")
+            shutil.rmtree(subjects_sequence_path_prefix)
+        os.makedirs(subjects_sequence_path_prefix)
+
+        camera_folders = os.listdir(frames_sequence_path_prefix)
+        print(camera_folders)
+        partial_generate_function = partial(self._generate_average_embeddings_single_camera, 
+                                            frames_sequence_path_prefix, 
+                                            subjects_sequence_path_prefix)
+        
+        # Use multiprocessing to parallelize processing camera folders
+        pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+        pool.map(partial_generate_function, camera_folders)
+        pool.close()
+        pool.join()
