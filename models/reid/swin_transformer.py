@@ -31,6 +31,8 @@ def _ntuple(n):
     return parse
 to_2tuple = _ntuple(2)
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def trunc_normal_init(module: nn.Module,
                       mean: float = 0,
                       std: float = 1,
@@ -1335,7 +1337,7 @@ class SwinTransformer(BaseModule):
         if self.semantic_weight >= 0 and semantic_weight == None:
             w = torch.ones(x.shape[0],1) * self.semantic_weight
             w = torch.cat([w, 1-w], axis=-1)
-            semantic_weight = w.cuda()
+            semantic_weight = w.to(device)
 
         x, hw_shape = self.patch_embed(x)
 
