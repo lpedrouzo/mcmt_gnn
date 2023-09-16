@@ -78,7 +78,9 @@ class BoundingBoxDataset(Dataset):
         if row['frame'] != self.curr_frame_num:
             frame_name = osp.join(self.frame_dir, str(row['frame']).zfill(6) + ".jpg")
             self.curr_img = cv2.imread(frame_name)
-            self.curr_img_path = row['frame']
+            if self.curr_img is None:
+                raise Exception(f"Img '{frame_name}' could not be loaded.")
+            self.curr_frame_num = row['frame']
 
         frame_img = self.curr_img
 
