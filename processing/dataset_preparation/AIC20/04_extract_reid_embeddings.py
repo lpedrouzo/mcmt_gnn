@@ -6,7 +6,7 @@ sys.path.insert(1, osp.abspath('.'))
 import torch
 
 from models.reid.swin_transformer import swin_tiny_patch4_window7_224, swin_small_patch4_window7_224, swin_base_patch4_window7_224
-from data.embeddings_processor import EmbeddingsProcessor
+from data_processor.embeddings_processor import EmbeddingsProcessor
 
 # Macros related to REID model
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')

@@ -7,7 +7,7 @@ import pandas as pd
 import multiprocessing
 
 from .utils import try_loading_logs
-from .bounding_box_dataset import BoundingBoxDataset
+from ..torch_dataset.bounding_box_dataset import BoundingBoxDataset
 from torch.utils.data import DataLoader
 from time import time
 from tqdm import tqdm

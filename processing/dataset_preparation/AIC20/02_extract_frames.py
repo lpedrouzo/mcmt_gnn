@@ -3,7 +3,7 @@ import os
 import os.path as osp
 sys.path.insert(1, osp.abspath('.'))
 
-from data.video_processor import VideoProcessor
+from data_processor.video_processor import VideoProcessor
 
 
 sequence_path = "datasets/AIC20/"

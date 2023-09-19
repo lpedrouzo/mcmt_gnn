@@ -5,7 +5,7 @@ sys.path.insert(1, osp.abspath('.'))
 import os
 import numpy as np
 
-from data.annotations_processor import AnnotationsProcessor
+from data_processor.annotations_processor import AnnotationsProcessor
 
 
 # Data schema definition

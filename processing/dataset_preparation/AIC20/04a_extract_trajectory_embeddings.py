@@ -7,7 +7,7 @@ import torch
 import numpy as np
 import pandas as pd
 from collections import defaultdict
-from data.embeddings_processor import EmbeddingsProcessor
+from data_processor.embeddings_processor import EmbeddingsProcessor
 
 sequence_path = "datasets/AIC20"
 sequence_names = ("S01", "S03", "S04")
