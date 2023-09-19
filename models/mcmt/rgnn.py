@@ -141,21 +141,19 @@ class MOTMPNet(nn.Module):
     This class was initially based on: https://github.com/deepmind/graph_nets tensorflow implementation.
     """
 
-    def __init__(self, model_params, bb_encoder = None, arch=None):
+    def __init__(self, model_params):
         """
         Defines all components of the model
         Args:
-            bb_encoder: (might be 'None') CNN used to encode bounding box apperance information.
             model_params: dictionary contaning all model hyperparameters
         """
         super(MOTMPNet, self).__init__()
 
-        self.node_cnn = bb_encoder
         self.model_params = model_params
 
         # Define Encoder and Classifier Networks
         edges_params = model_params['encoder_feats_dict']['edges']
-        nodes_params = model_params['encoder_feats_dict']['nodes'][arch]
+        nodes_params = model_params['encoder_feats_dict']['nodes']
         edges_params.update(nodes_params)
         encoder_feats_dict = edges_params
         classifier_feats_dict = model_params['classifier_feats_dict']
