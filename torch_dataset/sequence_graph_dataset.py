@@ -20,18 +20,18 @@ class SequenceGraphDataset(Dataset):
     def __init__(self, sequence_path_prefix, sequence_names, annotations_filename, transform=None, pre_transform=None):
 
         self.sequence_path_prefix = sequence_path_prefix
-        graph_root = osp.join(sequence_path_prefix, "graphs")
+        self.graph_root = osp.join(sequence_path_prefix, "graphs")
         self.sequence_names = sequence_names
         self.annotations_filename = annotations_filename
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        super(SequenceGraphDataset, self).__init__(graph_root, transform, pre_transform)
+        super(SequenceGraphDataset, self).__init__(self.graph_root, transform, pre_transform)
 
 
     @property
     def processed_file_names(self):
         """The names of the processed graph files"""
-        return [f'sequence_graph_S{i.zfill(2)}.pt' 
+        return [f'sequence_graph_{i}.pt' 
                 for i in self.sequence_names]
 
 
@@ -59,7 +59,11 @@ class SequenceGraphDataset(Dataset):
             Node labels (object IDs).
         """
         # Logging node ingormation
-        node_df = pd.DataFrame(columns=[("camera", "string"), ("object_id", "int"), ("embeddings_path", "string")])
+        node_df = pd.DataFrame({
+            "camera": pd.Series(dtype="str"), 
+            "object_id": pd.Series(dtype="int"), 
+            "embeddings_path": pd.Series(dtype="str")
+            })
 
         # Recording all objects on all cameras
         for camera_folder in camera_folders:
@@ -78,69 +82,83 @@ class SequenceGraphDataset(Dataset):
         node_df["node_id"] = node_df.index
         node_embeddings = torch.stack([torch.load(filepath) for filepath in node_df.embeddings_path.values]).to(self.device)
         node_labels = torch.tensor(node_df.object_id.values).to(self.device)
-
+        print(f"Length of node_df {len(node_df)}")
         return node_df, node_embeddings, node_labels
 
 
     def setup_edges(self, node_df, node_embeddings):
-        """Load and set up edge information and embeddings.
-        This method iterates over all pairs of nodes in the provided `node_df` and establishes edges 
-        between nodes that belong to different cameras. For each edge, it records the source and destination node IDs, 
-        the corresponding object IDs, and assigns an edge label based on whether the source and destination nodes 
-        belong to the same object. The resulting edge information and labels are stored in the `edge_df`, and the
-        edge indices are collected in the `edge_idx` tensor. The edge embeddings are computed using the 
-        provided node embeddings and are returned as `edge_embeddings`.
+        """Set up edge information and embeddings efficiently.
+        This function efficiently establishes edges between nodes that belong to different cameras in a DataFrame
+        containing node information. For each edge, it records the source and destination node IDs, the corresponding
+        object IDs, and assigns an edge label based on whether the source and destination nodes belong to the same object.
 
         Parameters
         ===========
-        node_df : pd.DataFrame
-            DataFrame containing node information (columns=["camera", "object_id", "embeddings_path"]).
-        node_embeddings : torch.Tensor
+        node_df: pd.DataFrame
+            DataFrame containing node information with 
+            columns=["camera", "node_id", "object_id"].
+        node_embeddings: torch.Tensor
             Node embeddings.
 
         Returns
-        ===========
-        edge_df : pd.DataFrame
-            DataFrame with edge information.
-        edge_idx : torch.Tensor
-            Edge indices.
-        edge_embeddings : torch.Tensor
-            Edge embeddings.
-        edge_labels : torch.Tensor
-            Edge labels.
-        """
-        # Logging edge information
-        edge_df = pd.DataFrame(columns=[("src_node_id", "int"), ("dst_node_id", "int"), ("src_obj_id", "int"), ("dst_obj_id", "int")])
+        ==========
+        edge_df: pd.DataFrame
+            DataFrame with edge information including 
+            columns=["src_node_id", "dst_node_id", "src_obj_id", "dst_obj_id"].
+        edge_idx: torch.Tensor
+            Edge indices as a torch tensor.
+        edge_embeddings: torch.Tensor
+            Edge embeddings computed based on the provided node embeddings.
+        edge_labels: torch.Tensor
+            Edge labels (0 or 1) indicating whether source and 
+            destination nodes belong to the same object.
 
+        Notes:
+            - `np.repeat` is used to repeat each element in the source node IDs and object IDs arrays, allowing for the
+            generation of pairs of source nodes that belong to the same camera with every destination node from different cameras.
+            - `np.tile` is used to create pairs of destination node IDs and object IDs by repeating the elements from the
+            different camera's nodes for each source node from the same camera.
+        """
         cameras_visited = []
         edge_idx = []
         edge_labels = []
 
+        edge_df = pd.DataFrame(columns=["src_node_id", "dst_node_id", "src_obj_id", "dst_obj_id", "edge_labels"])
+
         for camera in node_df.camera.unique():
-            print(f"Processing edges for camera {camera}")
             nodes_in_camera = node_df[node_df.camera == camera].reset_index(drop=True)
             nodes_not_in_camera = node_df[(node_df.camera != camera) & (~node_df.camera.isin(cameras_visited))].reset_index(drop=True)
-            
-            for i in range(len(nodes_in_camera)):
-                for j in range(len(nodes_not_in_camera)):
 
-                    src_node_id, dst_node_id = nodes_in_camera.loc[i, "node_id"], nodes_not_in_camera.loc[j, "node_id"]
-                    src_obj_id, dst_obj_id = nodes_in_camera.loc[i, "object_id"], nodes_not_in_camera.loc[j, "object_id"]
+            src_node_ids_ = nodes_in_camera["node_id"].values
+            dst_node_ids_ = nodes_not_in_camera["node_id"].values
+            src_obj_ids_ = nodes_in_camera["object_id"].values
+            dst_obj_ids_ = nodes_not_in_camera["object_id"].values
 
-                    edge_df = pd.concat([edge_df, pd.DataFrame.from_records([{
-                        "src_node_id": src_node_id, "dst_node_id": dst_node_id,
-                        "src_obj_id": src_obj_id, "dst_obj_id": dst_obj_id,
-                        "edge_label": int(src_obj_id == dst_obj_id)
-                    }])], ignore_index=True)
+            src_node_ids = np.repeat(src_node_ids_, len(dst_node_ids_))
+            dst_node_ids = np.tile(dst_node_ids_, len(src_node_ids_))
+            src_obj_ids = np.repeat(src_obj_ids_, len(dst_obj_ids_))
+            dst_obj_ids = np.tile(dst_obj_ids_, len(src_obj_ids_))
+            edge_label = (src_obj_ids == dst_obj_ids).astype(int)
 
-                    edge_idx.append(torch.tensor([src_node_id, dst_node_id]))
-                    edge_labels.append(int(src_obj_id == dst_obj_id))
+            edge_df = pd.concat([edge_df, pd.DataFrame({
+                "src_node_id": src_node_ids,
+                "dst_node_id": dst_node_ids,
+                "src_obj_id": src_obj_ids,
+                "dst_obj_id": dst_obj_ids,
+                "edge_labels": edge_label
+            })], ignore_index=True)
 
+            edge_idx.extend(np.column_stack((src_node_ids, dst_node_ids)))
+            edge_labels.extend(edge_label)
+
+            # Save visited cameras so we only get pairs of edges only once (Edge (1, 2) is equal to Edge (2,1))
             cameras_visited.append(camera)
-        
-        # Convert lists to torch tensors and finally compute edge embeddings
-        edge_idx = torch.stack(edge_idx).to(self.device)
-        edge_labels = torch.tensor(edge_labels).to(self.device)
+
+            print(f"Processed edges for camera {camera}. Shapes: ", 
+                  len(src_obj_ids), len(dst_obj_ids), len(src_node_ids), len(dst_node_ids))
+
+        edge_idx = torch.tensor(edge_idx, dtype=torch.int64, device=self.device)
+        edge_labels = torch.tensor(edge_labels, dtype=torch.int64, device=self.device)
         edge_embeddings = self.compute_edge_embeddings(node_embeddings, edge_idx)
         return edge_df, edge_idx, edge_embeddings, edge_labels
 
@@ -185,11 +203,11 @@ class SequenceGraphDataset(Dataset):
                         edge_labels=edge_labels)
             
             # Save each graph separately
-            torch.save(graph, self.processed_file_names[graph_idx])
+            torch.save(graph, osp.join(self.graph_root, self.processed_file_names[graph_idx]))
 
             # Saving log information
-            node_df.to_json(self.sequence_path_prefix, "logs", sequence_name, "sequence_graph_nodes.json")
-            edge_df.to_json(self.sequence_path_prefix, "logs", sequence_name, "sequence_graph_edges.json")
+            node_df.to_json(osp.join(self.sequence_path_prefix, "logs", sequence_name, "sequence_graph_nodes.json"))
+            edge_df.to_json(osp.join(self.sequence_path_prefix, "logs", sequence_name, "sequence_graph_edges.json"))
 
             # Increment graph index
             graph_idx += 1
@@ -213,4 +231,4 @@ class SequenceGraphDataset(Dataset):
         data : Data
             The processed graph data.
         """
-        return torch.load(osp.join(self.processed_file_names[idx]))
+        return torch.load(osp.join(self.graph_root, self.processed_file_names[idx]))
