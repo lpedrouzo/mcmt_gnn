@@ -11,7 +11,7 @@ encoder_feats_dict:
     edge_out_dim: 4 # elg: original = 16 ours 1 if not encoding
 
   nodes:
-    node_in_dim: 2048
+    node_in_dim: 768
     node_fc_dims: [1024,512, 128]
     node_out_dim: 32
     dropout_p: 0.1
