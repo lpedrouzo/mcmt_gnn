@@ -105,14 +105,14 @@ class MLPGraphIndependent(nn.Module):
         super(MLPGraphIndependent, self).__init__()
 
         if node_in_dim is not None :
-            self.node_mlp = MLP(input_dim=node_in_dim, fc_dims=list(node_fc_dims) + [node_out_dim],
-                                dropout_p=dropout_p, use_batchnorm=use_batchnorm, is_classifier=is_classifier)
+            self.node_mlp = MLP(input_dim=node_in_dim, fc_dims=list(node_fc_dims), output_dim=node_out_dim,
+                                dropout_p=dropout_p, use_batchnorm=use_batchnorm)
         else:
             self.node_mlp = None
 
         if edge_in_dim is not None :
-            self.edge_mlp = MLP(input_dim=edge_in_dim, fc_dims=list(edge_fc_dims) + [edge_out_dim],
-                                dropout_p=dropout_p, use_batchnorm=use_batchnorm,is_classifier=is_classifier)
+            self.edge_mlp = MLP(input_dim=edge_in_dim, fc_dims=list(edge_fc_dims), output_dim=edge_out_dim,
+                                dropout_p=dropout_p, use_batchnorm=use_batchnorm)
         else:
             self.edge_mlp = None
 
@@ -211,9 +211,9 @@ class MOTMPNet(nn.Module):
                        use_batchnorm=edge_model_feats_dict['use_batchnorm'])
 
         node_mlp = MLP(input_dim=node_model_in_dim,
-                           fc_dims=node_model_feats_dict['fc_dims'],
-                           dropout_p=node_model_feats_dict['dropout_p'],
-                           use_batchnorm=node_model_feats_dict['use_batchnorm'])
+                        fc_dims=node_model_feats_dict['fc_dims'],
+                        dropout_p=node_model_feats_dict['dropout_p'],
+                        use_batchnorm=node_model_feats_dict['use_batchnorm'])
 
         node_mlp_old = nn.Sequential(*[nn.Linear(2 * encoder_feats_dict['node_out_dim'], encoder_feats_dict['node_out_dim']),
                                    nn.ReLU(inplace=True)])
@@ -233,15 +233,15 @@ class MOTMPNet(nn.Module):
         Args:
             data: object containing attribues
               - x: node features matrix
-              - edge_index: tensor with shape [2, M], with M being the number of edges, indicating nonzero entries in the
+              - edge_index: tensor with shape [M, 2], with M being the number of edges, indicating nonzero entries in the
                 graph adjacency (i.e. edges) (i.e. sparse adjacency)
               - edge_attr: edge features matrix (sorted by edge apperance in edge_index)
 
         Returns:
             classified_edges: list of unnormalized node probabilites after each MP step
         """
-        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-
+        x, edge_index, edge_attr = data.x, data.edge_index.T, data.edge_attr
+        print(edge_index.shape)
 
         # As I only have 1 value in the edge features, i dont encode it. encoder inside = E_v y E_e
         latent_edge_feats, latent_node_feats = self.encoder(edge_attr, x)
