@@ -3,7 +3,7 @@ from torch import nn
 
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, fc_dims, output_dim, dropout_p=0.4, use_batchnorm=False):
+    def __init__(self, input_dim, fc_dims, output_dim=None, dropout_p=0.4, use_batchnorm=False):
         """Multi-Layer Perceptron (MLP) neural network module.
 
         Parameters
@@ -25,26 +25,29 @@ class MLP(nn.Module):
         mlp : nn.Sequential
             Sequential container for MLP layers.
         """
-        super(MLP, self).__init__()
+        super().__init__()
 
         assert isinstance(fc_dims, (list, tuple)), \
             f'fc_dims must be either a list or a tuple, but got {type(fc_dims)}'
         
         self.mlp = nn.Sequential()
-        dims = [input_dim] + fc_dims + [output_dim]
+        dims = [input_dim] + fc_dims 
 
+        # Set up input and hidden layers
+        for i in range(len(dims)-1):
+            self.mlp.add_module(f'layer_{i}', nn.Linear(dims[i], dims[i+1]))
 
-        for i in range(len(dims - 1)):
-            self.mlp.add_module(f'layer_{i}', nn.Linear(dims[i-1], dims[i]))
+            if use_batchnorm:
+                self.mlp.add_module(f'bn_{i}', nn.BatchNorm1d(dims[i+1],track_running_stats=False))
 
-            if i+2 < len(dims):
-                if use_batchnorm:
-                    self.mlp.add_module(f'bn_{i}', nn.BatchNorm1d(dims[i],track_running_stats=False))
+            self.mlp.add_module(f'act_{i}', nn.ReLU(inplace=True))
 
-                self.mlp.add_module(f'act_{i}', nn.ReLU(inplace=True))
-
-                if dropout_p is not None:
-                    self.mlp.add_module(f'dropout_{i}', nn.Dropout(p=dropout_p))
+            if dropout_p is not None:
+                self.mlp.add_module(f'dropout_{i}', nn.Dropout(p=dropout_p))
+        
+        # Set classification layer if applicable
+        if output_dim is not None:
+            self.mlp.add_module(f'output', nn.Linear(dims[-1], output_dim))
 
     def forward(self, input):
         """Forward pass of the MLP.
