@@ -1,38 +1,67 @@
-node_agg_fn: 'sum'
-num_enc_steps: 1  # before 4 Number of message passing steps
-num_class_steps: 1  # before 3Number of message passing steps during feature vectors are classified (after Message Passing)
-reattach_initial_nodes: False  # elg. Original: False Determines whether initially encoded node feats are used during node updates
-reattach_initial_edges: False  #  elg. Original: TrueDetermines whether initially encoded edge feats are used during node updates
+# Configuration parameters for training (loss, optimizer, lr, datasets)
+training_config:
+  checkpint_path_prefix: 'checkpoints'
+  load_previous_train_state: true
+  dataset:
+    sequence_path_prefix: 'datasets/AIC20/'
+    sequences_train: 
+      - 'S01'
+      - 'S04'
+    sequences_val: 
+      - 'S03'
+    annotations_filename: 'gt.txt'
+  loss:
+    loss_type: 'ce_custom' # 'ce' - 'focal' - 'bce'
+    alpha: [0.25, 0.75]
+    gamma: 2
+  lr_scheduler:
+    scheduler_type: 'step'
+    step_size: 1
+    gamma: 0.995
+    warmup_duration: 3
+  optimizer:
+    lr: 0.05
+    momentum: 0
+    dampening: 0
 
-encoder_feats_dict:
-  edges:
-    edge_in_dim: 2 # elg: 2 if only appearance or only dist
-    edge_fc_dims: [4] #elg before [6]
-    edge_out_dim: 4 # elg: original = 16 ours 1 if not encoding
+# Configuration parameters for the GNN architecture
+gnn_arch:
+  node_agg_fn: 'sum'
+  num_enc_steps: 10  # before 4 Number of message passing steps
+  num_class_steps: 1  # before 3Number of message passing steps during feature vectors are classified (after Message Passing)
+  reattach_initial_nodes: False  # elg. Original: False Determines whether initially encoded node feats are used during node updates
+  reattach_initial_edges: False  #  elg. Original: TrueDetermines whether initially encoded edge feats are used during node updates
 
-  nodes:
-    node_in_dim: 768
-    node_fc_dims: [1024,512, 128]
-    node_out_dim: 32
+  encoder_feats_dict:
+    edges:
+      edge_in_dim: 2 
+      edge_fc_dims: [4] 
+      edge_out_dim: 4 
+
+    nodes:
+      node_in_dim: 768
+      node_fc_dims: [1024,512, 128]
+      node_out_dim: 32
+      dropout_p: 0.1
+      use_batchnorm: True
+
+  # MPN edge update
+  edge_model_feats_dict:
+    fc_dims: [4] 
     dropout_p: 0.1
     use_batchnorm: True
 
-# MPN EDGE UPDATE
-edge_model_feats_dict:
-  fc_dims: [4] #  before 66,6elg: orig [80,16]In size is 4 * encoded nodes + 2 * encoded edges
-  dropout_p: 0.1
-  use_batchnorm: True
+  # MPN node update
+  node_model_feats_dict:
+    fc_dims: [32]  
+    dropout_p: 0.1
+    use_batchnorm: True
 
-# MPN NODE UPDATE
-node_model_feats_dict:
-  fc_dims: [32]  # elg: orig [56,32] In size is 2 * encoded nodes + 1 * encoded edges
-  dropout_p: 0.1
-  use_batchnorm: True
-
-classifier_feats_dict:
-  edge_in_dim: 4 #orig 16
-  edge_fc_dims: [] # orig
-  edge_out_dim: 2
-  dropout_p: 0
-  use_batchnorm: False
-  is_classifier: True
+  # Classifier
+  classifier_feats_dict:
+    edge_in_dim: 4 
+    edge_fc_dims: [] 
+    edge_out_dim: 2
+    dropout_p: 0
+    use_batchnorm: False
+    is_classifier: True
