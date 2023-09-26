@@ -196,8 +196,9 @@ class SequenceGraphDataset(Dataset):
             # Loading edge information, embeddings and labels for all cameras in the sequence
             edge_df, edge_idx, edge_embeddings, edge_labels = self.setup_edges(node_df, node_embeddings)
 
+
             graph = Data(x=node_embeddings, 
-                        edge_index=edge_idx, 
+                        edge_index=edge_idx.T, 
                         y=node_labels, 
                         edge_attr=edge_embeddings, 
                         edge_labels=edge_labels)

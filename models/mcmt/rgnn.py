@@ -240,7 +240,7 @@ class MOTMPNet(nn.Module):
         Returns:
             classified_edges: list of unnormalized node probabilites after each MP step
         """
-        x, edge_index, edge_attr = data.x, data.edge_index.T, data.edge_attr
+        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
         print(edge_index.shape)
 
         # As I only have 1 value in the edge features, i dont encode it. encoder inside = E_v y E_e
