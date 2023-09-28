@@ -95,20 +95,23 @@ else:
 print(f"7. Success creating learning rate scheduler: {lr_scheduler_config['scheduler_type']}")
 
 # 6 - Definition  of training engine using our custom object
-training_engine = TrainingEngine(train_dataloader, val_dataloader, gnn, device)
+training_engine = TrainingEngine(train_dataloader, val_dataloader, gnn, training_config["checkpoint_path_prefix"], device)
 training_engine.setup_engine(
     optimizer=optimizer,
     lr=optimizer_config["lr"],
+    criterion=criterion,
     lr_scheduler=lr_scheduler,
     warmup_duration=lr_scheduler_config["warmup_duration"],
     show_training_progress=True,
     metrics=["Accuracy", "Precision", "Recall"],
-    use_tensorboard=True
+    resume_training_flag=training_config["load_previous_train_state"],
+    use_tensorboard=True,
 )
 
 # Check if there are previous checkpoints. Resume training if there are
-if os.path.exists(training_config["checkpoint_path_prefix"]) and training_config["load_previous_train_state"]:
-    training_engine.load_train_state()
+if os.path.exists(training_config["checkpoint_path_prefix"]):
+    if len(os.listdir(osp.join(training_config["checkpoint_path_prefix"], "checkpoints"))) and training_config["load_previous_train_state"]:
+        training_engine.load_train_state()
 
 # Run or resume training
 training_engine.run_training(max_epochs=training_config["epochs"])
