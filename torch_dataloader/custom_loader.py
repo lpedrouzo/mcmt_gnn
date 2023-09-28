@@ -89,14 +89,14 @@ class ObjectSamplingDataLoader(DataLoader):
         Batch size for data loading. (default: 1)
     shuffle : bool, optional
         Whether to shuffle the data. (default: True)
-    num_objects_per_graph : int, optional
+    num_object_ids_per_graph : int, optional
         Number of objects to sample per graph. (default: 100)
     **kwargs
         Additional keyword arguments passed to DataLoader constructor.
 
     Attributes
     ==========
-    num_objects_per_graph : int
+    num_object_ids_per_graph : int
         Number of objects to sample per graph.
 
     Notes
@@ -107,14 +107,14 @@ class ObjectSamplingDataLoader(DataLoader):
     Example
     ==========
     >>> dataset = YourCustomDataset()
-    >>> loader = ObjectSamplingDataLoader(dataset, batch_size=32, num_objects_per_graph=50)
+    >>> loader = ObjectSamplingDataLoader(dataset, batch_size=32, num_object_ids_per_graph=50)
     >>> for batch in loader:
     >>>     # Process the sampled objects in each batch.
 
     """
 
-    def __init__(self, dataset, batch_size=1, shuffle=True, num_objects_per_graph=100, **kwargs):
-        self.num_objects_per_graph = num_objects_per_graph
+    def __init__(self, dataset, batch_size=1, shuffle=True, num_object_ids_per_graph=100, **kwargs):
+        self.num_object_ids_per_graph = num_object_ids_per_graph
         super().__init__(dataset, batch_size, shuffle, **kwargs)
 
     def collate(self, data_list):
@@ -138,9 +138,9 @@ class ObjectSamplingDataLoader(DataLoader):
             object_ids = data.y
             unique_ids = torch.unique(object_ids)
 
-            # Sample only if the number of objects is more than or equal to num_objects_per_graph
-            if len(unique_ids) >= self.num_objects_per_graph:
-                sampled_idx = torch.randperm(len(unique_ids))[:self.num_objects_per_graph]
+            # Sample only if the number of objects is more than or equal to num_object_ids_per_graph
+            if len(unique_ids) >= self.num_object_ids_per_graph:
+                sampled_idx = torch.randperm(len(unique_ids))[:self.num_object_ids_per_graph]
                 sampled_ids = unique_ids[sampled_idx]
                 node_indices = torch.arange(data.num_nodes)
                 sampled_nodes = node_indices[torch.isin(object_ids, sampled_ids)]
