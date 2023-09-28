@@ -1,7 +1,8 @@
 # Configuration parameters for training (loss, optimizer, lr, datasets)
 training_config:
-  checkpint_path_prefix: 'checkpoints'
+  checkpoint_path_prefix: 'results'
   load_previous_train_state: true
+  epochs: 5
   dataset:
     sequence_path_prefix: 'datasets/AIC20/'
     sequences_train: 
