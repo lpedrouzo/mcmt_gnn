@@ -1,6 +1,8 @@
 import sys
 import torch
 import os
+import os.path as osp
+import pandas as pd
 from ignite.metrics import Precision, Recall, Accuracy, Loss
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint, global_step_from_engine, create_lr_scheduler_with_warmup, Checkpoint
@@ -51,17 +53,22 @@ class TrainingEngineAbstract(object):
     val_evaluator : Engine
         Ignite Engine for validation evaluation.
     checkpoint_path_prefix: str
-        The directory prefix where engine checkpoints will be stored
+        The directory prefix where the results will be stored
     ignite_lr_scheduler: ignite.handlers.param_scheduler.ConcatScheduler
         The learning rate scheduler from pytorch ignite
+    current_epoch: int
+        This variable will be 0 for an initial training session,
+        or if a past session exists and the engine is set to resume training,
+        it will get the last training epoch.
     """
 
-    def __init__(self, train_loader, val_loader, gnn_model, checkpoint_path_prefix, device):
+    def __init__(self, train_loader, val_loader, gnn_model, results_path_prefix, device):
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.gnn_model = gnn_model
         self.device = device
-        self.checkpoint_path_prefix = checkpoint_path_prefix
+        self.current_epoch = 0
+        self.is_resumed_training = False #Will be true if load_train_state() is called
 
         # These parameters will be initialized in the setup functions
         self.optimizer = None
@@ -75,6 +82,12 @@ class TrainingEngineAbstract(object):
         self.train_evaluator = None
         self.val_evaluator = None
 
+        # Results paths
+        self.results_path_prefix = results_path_prefix 
+        self.checkpoint_path = osp.join(self.results_path_prefix, "checkpoints")
+        self.train_metrics_logs_path = osp.join(self.results_path_prefix, "metrics", "train_results.csv")
+        self.val_metrics_logs_path = osp.join(self.results_path_prefix, "metrics", "val_results.csv")
+        self.tensorboard_path = osp.join(self.results_path_prefix, "tensorboard")
 
     def setup_trainer(self, optimizer, criterion, progress_bar=True):
         """Set up the trainer for training.
@@ -140,6 +153,11 @@ class TrainingEngineAbstract(object):
         for name, metric in self.metrics.items():
             metric.attach(self.val_evaluator, name)
 
+        # Preparing empty dataframes for logging
+        self.train_metrics_df = pd.DataFrame(columns=["epoch", *metrics])
+        self.val_metrics_df = pd.DataFrame(columns=["epoch", *metrics])
+
+
 
     def setup_loggers(self, log_training=True, log_interval=100):
         """Set up loggers for training and validation.
@@ -151,6 +169,9 @@ class TrainingEngineAbstract(object):
         log_interval : int, optional
             The interval for logging training loss. Default is 100.
         """
+
+        os.makedirs(osp.join(self.results_path_prefix, "metrics"), exist_ok=True)
+
         # Logger for training loss every log_interval iterations
         @self.train_engine.on(Events.ITERATION_COMPLETED(every=log_interval))
         def log_training_loss(engine):
@@ -163,24 +184,42 @@ class TrainingEngineAbstract(object):
                 self.train_evaluator.run(self.train_loader)
                 metrics = self.train_evaluator.state.metrics
 
+                # Log current epoch
+                row = {"epoch": trainer.state.epoch}
                 msg = f"Train Results - Epoch[{trainer.state.epoch}] - "
+
+                # Log current metrics
                 for name, _ in self.metrics.items():
                     msg += f"{name}: {metrics[name]} - "
+                    row[name] = metrics[name]
                 print(msg)
 
+                # This result logs will besaved to csv once trainer.run() is finished
+                row_df = pd.DataFrame([row], columns=self.train_metrics_df.columns)
+                self.train_metrics_df = pd.concat([self.train_metrics_df, row_df], ignore_index=True)         
+                
         # Logger for validation metrics
         @self.train_engine.on(Events.EPOCH_COMPLETED)
         def log_validation_results(trainer):
             self.val_evaluator.run(self.val_loader)
             metrics = self.val_evaluator.state.metrics
 
+            # Log current epoch
+            row = {"epoch": trainer.state.epoch}
             msg = f"Validation Results - Epoch[{trainer.state.epoch}] - "
+
+            # Log current metrics
             for name, _ in self.metrics.items():
                 msg += f"{name}: {metrics[name]} - "
+                row[name] = metrics[name]
             print(msg)
 
+            # This result logs will besaved to csv once trainer.run() is finished
+            row_df = pd.DataFrame([row], columns=self.val_metrics_df.columns)
+            self.val_metrics_df = pd.concat([self.val_metrics_df, row_df], ignore_index=True)         
 
-    def setup_checkpointer(self, checkpoint_score_fn=None, n_save=3):
+
+    def setup_checkpointer(self, checkpoint_score_fn=None, resume_training_flag=False):
         """Set up model checkpointing.
         The checkpoint_score_fn function should be a function that
         receives a 'metrics' parameter (a dictionary str:float) and 
@@ -195,10 +234,10 @@ class TrainingEngineAbstract(object):
 
         Parameters:
         ===========
-        checkpoint_score_fn : callable
+        checkpoint_score_fn : callable optional
             Function to determine the score for checkpointing.
-        n_save : int, optional
-            Number of best models to save. Default is 3.
+        resume_training_flag: bool
+            Whether the engine will resume training from last session or not.
         """
         def score_function(engine):
             return checkpoint_score_fn(engine.state.metrics)
@@ -212,17 +251,16 @@ class TrainingEngineAbstract(object):
             to_save["lr_scheduler"] = self.ignite_lr_scheduler       
 
         # Checkpoint to store n_saved best models wrt score function
-        model_checkpoint = Checkpoint(
-            to_save,
-            self.checkpoint_path_prefix,
-            n_saved=n_save,
+        model_checkpoint = ModelCheckpoint(
+            self.checkpoint_path,
             score_function=score_function if checkpoint_score_fn is not None else None,
             score_name="model_score" if checkpoint_score_fn is not None else None,
-            global_step_transform=global_step_from_engine(self.train_engine),  # helps fetch the trainer's state
+            global_step_transform=global_step_from_engine(self.train_engine),  
+            require_empty=(not resume_training_flag)
         )
 
         # Save the model after every epoch of val_evaluator is completed
-        self.val_evaluator.add_event_handler(Events.COMPLETED, model_checkpoint)
+        self.val_evaluator.add_event_handler(Events.COMPLETED, model_checkpoint, to_save)
 
 
     def load_train_state(self):
@@ -234,24 +272,36 @@ class TrainingEngineAbstract(object):
 
         > checkpoint_1.pt, checkpoint_2.pt, ...
         """
+        if not osp.exists(self.train_metrics_logs_path):
+            raise Exception("There are no results paths to restore session. Please run a new training.")
+        
+        print("Resuming training.")
         to_load = {
             "model": self.gnn_model,
             "optimizer": self.optimizer, 
             "trainer": self.train_engine,
         }
         if self.ignite_lr_scheduler is not None:
-            to_load["lr_scheduler"] = self.ignite_lr_scheduler       
+            to_load["lr_scheduler"] = self.ignite_lr_scheduler   
 
         # Get the last checkpoint
-        checkpoint_last = sorted(os.listdir(self.checkpoint_path_prefix), 
-                                 lambda item: item.replace('.pt', '').split('_')[-1])[-1]
-        
+        checkpoint_last = sorted(os.listdir(self.checkpoint_path), 
+                                 key=lambda item: int(item.replace('.pt', '').split('_')[-1]))[-1]
+        checkpoint_last = osp.join(self.checkpoint_path, checkpoint_last)
+
         # Load checkpoint and assign the objects to the trainer
         checkpoint = torch.load(checkpoint_last, map_location=self.device) 
-        Checkpoint.load_objects(
+        ModelCheckpoint.load_objects(
             to_load=to_load, 
             checkpoint=checkpoint
         ) 
+        self.current_epoch = self.train_engine.state.epoch
+
+        # Restore past metrics
+        self.train_metrics_df =  pd.read_csv(self.train_metrics_logs_path)
+        self.val_metrics_df =  pd.read_csv(self.val_metrics_logs_path)
+
+        print(self.train_engine.state)
 
 
     def setup_lr_scheduler_with_warmup(self, lr_scheduler,
@@ -292,7 +342,7 @@ class TrainingEngineAbstract(object):
         """Set up Tensorboard logging.
         """
         # Define a Tensorboard logger
-        tb_logger = TensorboardLogger(log_dir="tb-logger")
+        tb_logger = TensorboardLogger(log_dir=self.tensorboard_path)
 
         # Attach handler to plot trainer's loss every 100 iterations
         tb_logger.attach_output_handler(
@@ -312,6 +362,7 @@ class TrainingEngineAbstract(object):
                 global_step_transform=global_step_from_engine(self.train_engine),
             )
 
+
     def setup_engine(self, 
                      optimizer, 
                      lr, 
@@ -323,6 +374,7 @@ class TrainingEngineAbstract(object):
                      log_training=True, 
                      log_interval=100, 
                      checkpoint_score_fn=None, 
+                     resume_training_flag=False,
                      use_tensorboard=True):
         counter = 1
 
@@ -336,18 +388,18 @@ class TrainingEngineAbstract(object):
         print(f"{counter}. Added metrics to TrainingEngine.")
         counter += 1
 
-        self.setup_loggers(log_training=True, log_interval=100)
+        self.setup_loggers(log_training=log_training, log_interval=log_interval)
         print(f"{counter}. Added Loggers to TrainingEngine.")
-        counter += 1
-
-        self.setup_checkpointer(checkpoint_score_fn)
-        print(f"{counter}. Added Checkpointer to TrainingEngine.")
         counter += 1
 
         if lr_scheduler is not None:
             self.setup_lr_scheduler_with_warmup(lr_scheduler, warmup_start_value=lr/10, warmup_end_value=lr, warmup_duration=warmup_duration)
             print(f"{counter}. Added learning rate scheduler to TrainingEngine with warmup {'enabled' if warmup_duration else 'disabled'}.")
             counter += 1
+
+        self.setup_checkpointer(checkpoint_score_fn, resume_training_flag)
+        print(f"{counter}. Added Checkpointer to TrainingEngine.")
+        counter += 1
 
         if use_tensorboard:
             self.setup_tensorboard()
@@ -362,11 +414,17 @@ class TrainingEngineAbstract(object):
         max_epochs : int
             The maximum number of training epochs.
         """
-        self.train_engine.run(self.train_loader, max_epochs)
+        self.train_engine.run(self.train_loader, self.current_epoch + max_epochs)
         print("Training has finished successfully!")
 
         if self.tb_logger is not None:
             self.tb_logger.close()
+        
+        # Save metrics logs
+        self.train_metrics_df.to_csv(self.train_metrics_logs_path)
+        self.val_metrics_df.to_csv(self.val_metrics_logs_path)
+
+        print(self.train_engine.state)
 
 
     def get_training_engine(self):

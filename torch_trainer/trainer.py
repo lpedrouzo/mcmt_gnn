@@ -1,7 +1,5 @@
 import torch
 import torch.nn.functional as F
-from .custom_loss import cross_entropy_with_online_weights
-
 import torch.nn as nn
 import torch.nn.functional as F
 from .trainer_abstract import TrainingEngineAbstract
