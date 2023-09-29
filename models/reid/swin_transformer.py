@@ -1374,3 +1374,41 @@ def swin_small_patch4_window7_224(img_size=224,drop_rate=0.0, attn_drop_rate=0.0
 def swin_tiny_patch4_window7_224(img_size=224,drop_rate=0.0, attn_drop_rate=0.0, drop_path_rate=0., **kwargs):
     model = SwinTransformer(pretrain_img_size = img_size, patch_size=4, window_size=7, embed_dims=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24), drop_path_rate=drop_path_rate, drop_rate=drop_rate, attn_drop_rate=attn_drop_rate, **kwargs)
     return model
+
+
+def load_swin_encoder(model_size, model_path, device, semantic_weight=1.0):
+    """
+    Loads Swin Transformer as implemented in SOLIDER
+
+    Parameters
+    ===========
+    model_size: str
+        The categorical size of the model (tiny, small, base)
+    model_path: str
+        The path to the model weights
+    semantic_weight: float
+        TBD
+    device: str
+        Pytorch device for computations
+
+    Returns
+    =========
+    nn.Module
+        The SwinTransformer model for REID encoding
+    """
+    # Validate REID model size is valid
+    if model_size == 'tiny':
+        swin_builder = swin_tiny_patch4_window7_224
+    elif model_size == 'small':
+        swin_builder = swin_small_patch4_window7_224
+    elif model_size == 'base':
+        swin_builder = swin_base_patch4_window7_224
+    else:
+        raise Exception(f"The only three valid options are (tiny, small, base). Your input was {model_size}")
+
+    swin = swin_builder(convert_weights=False, semantic_weight=semantic_weight)
+    swin.init_weights(model_path)
+    swin.to(device)
+    print(swin)
+
+    return swin
