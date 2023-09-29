@@ -4,55 +4,40 @@ import os
 sys.path.insert(1, osp.abspath('.'))
 
 import torch
-
-from models.reid.swin_transformer import swin_tiny_patch4_window7_224, swin_small_patch4_window7_224, swin_base_patch4_window7_224
+import yaml
+from models.reid.resnet import resnet101_ibn_a
+from models.reid.swin_transformer import load_swin_encoder
 from data_processor.embeddings_processor import EmbeddingsProcessor
+from data_processor.utils import load_config
 
-# Macros related to REID model
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-model_path = 'models/reid/st_reid_weights.pth'
-model_size = 'tiny'
-semantic_weight = 1.0
-max_detections_per_df = 5000
-annotations_filename='gt.txt'
-swin_builder = None
 
-# Macros related to dataset
-sequence_path = "datasets/AIC20/"
-
-# Validate REID model size is valid
-if model_size == 'tiny':
-    swin_builder = swin_tiny_patch4_window7_224
-elif model_size == 'small':
-    swin_builder = swin_small_patch4_window7_224
-elif model_size == 'base':
-    swin_builder = swin_base_patch4_window7_224
-else:
-    raise Exception(f"The only three valid options are (tiny, small, base). Your input was {model_size}")
+common_config, task_config = load_config("config/processing.yml", 
+                                         "04_extract_reid_embeddings")
 
 
 if __name__ == '__main__':
     # Instantiate model and load weights (send to GPU if applicable)
-    swin = swin_builder(convert_weights=False, semantic_weight=semantic_weight)
-    swin.init_weights(model_path)
-    swin.to(device)
-    print(swin)
+    if task_config['model_type'] == 'resnet':
+        model = resnet101_ibn_a(model_path=task_config['model_path'], device=device)
+    elif task_config['model_type'] == 'swin':
+        model = load_swin_encoder(model_size=task_config['model_size'], model_path=task_config['model_path'], device=device)
 
 
     # Iterate over all of the sequences
-    for sequence_name in os.listdir(osp.join(sequence_path, "annotations")):
+    for sequence_name in common_config['sequence_names']:
 
         # Instantiate the embeddings processor
         emb_proc = EmbeddingsProcessor(inference_mode=False, 
                                     precomputed_embeddings=False,
-                                    frame_width=1920,
-                                    frame_height=1080,
-                                    img_batch_size=32,
-                                    img_size=(224,224),
-                                    cnn_model=swin,
-                                    sequence_path=sequence_path,
+                                    frame_width=task_config['original_img_size'][0],
+                                    frame_height=task_config['original_img_size'][1],
+                                    img_batch_size=task_config['img_batch_size'],
+                                    img_size=task_config['cnn_img_size'],
+                                    cnn_model=model,
+                                    sequence_path=common_config['sequence_path'],
                                     sequence_name=sequence_name,
-                                    annotations_filename=annotations_filename
+                                    annotations_filename=common_config['annotations_filename']
                                     )
         
-        emb_proc.store_embeddings(max_detections_per_df=max_detections_per_df)
+        emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'])
