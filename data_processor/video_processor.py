@@ -115,7 +115,10 @@ class VideoProcessor(object):
             # Read video file and save image frames
             while video.isOpened():
 
+                # Read frame and convert to RGB channel arrangement
                 ret, frame = video.read()
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
                 frame_name = osp.join(output_dir, str(frame_counter).zfill(6) + ".jpg")
                 frame_counter += 1
 
