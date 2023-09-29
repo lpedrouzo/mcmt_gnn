@@ -1,0 +1,32 @@
+common_params:
+  annotations_filename: 'gt.txt'
+  video_filename: 'vdo.avi'
+  video_format: '.avi'
+  sequence_path: "datasets/AIC20/"
+  sequence_names: ["S01", "S03", "S04"]
+  sc_preds_filename: mtsc_deepsort_ssd512.txt
+
+01_prep_videos_annotations:
+  original_aic_dataset_path: "datasets/raw/AIC20"
+  # Partitions to process
+  dataset_partitions:
+    - train
+    - test
+  items_to_move: 
+    - sc_ground_truth
+    - sc_estimates
+  # Relative paths to annotations with respect to <sequence_path>/<camera_name>/
+  sc_preds_path: "mtsc/mtsc_deepsort_ssd512.txt"
+  annotations_path: "gt/gt.txt"
+
+03_preprocess_annotations:
+  sort_column_name: 'frame'
+
+04_extract_reid_embeddings:
+  max_detections_per_df: 5000
+  model_type: 'resnet'
+  model_path: '../models/reid/resnet101_ibn_a_2.pth'
+  cnn_img_size: [224, 224]
+  original_img_size: [1920, 1080]
+  img_batch_size: 32
+
