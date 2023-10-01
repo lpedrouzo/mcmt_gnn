@@ -91,7 +91,6 @@ class ResNet_IBN(nn.Module):
         self.layer2 = self._make_layer(block, scale*2, layers[1], stride=2)
         self.layer3 = self._make_layer(block, scale*4, layers[2], stride=2)
         self.layer4 = self._make_layer(block, scale*8, layers[3], stride=last_stride)
-        self.avgpool = nn.AvgPool2d(7)
         self.bottleneck = nn.BatchNorm1d(in_planes)
         self.fc = nn.Linear(scale * 8 * block.expansion, num_classes)
 
@@ -151,7 +150,7 @@ class ResNet_IBN(nn.Module):
         x = self.layer3(x)
         x = self.layer4(x)
 
-        x = self.avgpool(x)
+        x = nn.functional.avg_pool2d(x, x.shape[2:4])
         x = x.view(x.size(0), -1)
         x = self.bottleneck(x)
 

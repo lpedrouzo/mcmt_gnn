@@ -4,9 +4,8 @@ sys.path.insert(1, osp.abspath('.'))
 
 import os
 import numpy as np
-
-from data_processor.annotations_processor import AnnotationsProcessor
-from data_processor.utils import load_config
+from modules.data_processor.annotations_processor import AnnotationsProcessor
+from modules.data_processor.utils import load_config
 
 # Data schema definition
 annotations_schema = {
@@ -22,7 +21,7 @@ annotations_schema = {
     'label': np.int64
 }
 
-common_config, task_config = load_config("config/processing.yml", 
+common_config, task_config = load_config("config/preprocessing.yml", 
                                          "03_preprocess_annotations")
 
 if __name__ == "__main__":

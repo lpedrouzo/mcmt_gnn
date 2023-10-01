@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 import pandas as pd
 import os.path as osp
+import torch.nn as nn
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
@@ -18,7 +19,9 @@ class BoundingBoxDataset(Dataset):
                  pad_:bool = True, 
                  pad_mode:str = 'mean', 
                  output_size:tuple = (128, 64),
-                 return_det_ids_and_frame:bool = False):
+                 return_det_ids_and_frame:bool = False,
+                 mode='train',
+                 augmentation=None):
         
         # Initialization of constructor variables
         self.det_df = det_df
@@ -27,8 +30,14 @@ class BoundingBoxDataset(Dataset):
         self.frame_dir = frame_dir
         self.pad_mode = pad_mode
         self.pad = pad_
-        self.transforms = Compose((Resize(output_size), ToTensor(), Normalize(mean=[0.485, 0.456, 0.406],
-                                                                             std=[0.229, 0.224, 0.225])))
+        transform_list = [Resize(output_size), 
+                          ToTensor(), 
+                          Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
+        
+        if augmentation and mode == 'train':
+            transform_list.append(augmentation)
+        
+        self.transforms = Compose(transform_list)
 
         # Initialize two variables containing the path and img of the frame that is being loaded to avoid loading multiple
         # times for boxes in the same image

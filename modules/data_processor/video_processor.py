@@ -104,6 +104,7 @@ class VideoProcessor(object):
 
             # Load the video using OpenCV
             video = cv2.VideoCapture(osp.join(video_dir, single_camera_video_dir))
+            print("frames: ", video.get(cv2.CAP_PROP_FRAME_COUNT))
 
             # Define and create the output path 
             output_dir = osp.join(frame_dir, frame_folder)
@@ -115,17 +116,19 @@ class VideoProcessor(object):
             # Read video file and save image frames
             while video.isOpened():
 
-                # Read frame and convert to RGB channel arrangement
+                # Read frame and 
                 ret, frame = video.read()
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                frame_name = osp.join(output_dir, str(frame_counter).zfill(6) + ".jpg")
-                frame_counter += 1
 
                 if not ret:
                     print("End of video file.")
                     break
                 
+                # convert to RGB channel arrangement
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                frame_name = osp.join(output_dir, str(frame_counter).zfill(6) + ".jpg")
+                frame_counter += 1
+
                 cv2.imwrite(frame_name, frame)
 
             tEnd = time.time()

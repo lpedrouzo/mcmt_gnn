@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import multiprocessing
 
-from .utils import try_loading_logs
+from .utils import try_loading_logs, get_incremental_folder
 from ..torch_dataset.bounding_box_dataset import BoundingBoxDataset
 from torch.utils.data import DataLoader
 from time import time
@@ -151,7 +151,7 @@ class EmbeddingsProcessor(object):
         return embeddings.to(self.device)
 
 
-    def store_embeddings(self, max_detections_per_df:int):
+    def store_embeddings(self, max_detections_per_df:int, mode:str='train', augmentation=None):
         """ Compute and store node and reid embeddings for all cameras in the sequence.
         This method processes frames and annotations for each camera in the sequence and computes node
         and reid embeddings for the detected objects in those frames. The embeddings are stored in separate
@@ -161,6 +161,10 @@ class EmbeddingsProcessor(object):
         -----------
         max_detections_per_df : int
             Maximum number of detections to process at once to avoid running out of memory.
+        mode: str
+            'train' or 'test' modes. If mode is train, image augmentation can be applied
+        augmentation: torchvision.transforms.Compose
+            A list of image transformations to augment data at training time.
 
         Notes:
         ------
@@ -192,13 +196,23 @@ class EmbeddingsProcessor(object):
         print(f"Storing embeddings for sequence {self.sequence_name}")
 
         # Create dirs to store embeddings (node embeddings)
-        node_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic' if self.annotations_filename is None else self.annotations_filename, 'node')
+        node_embeds_path_prefix = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
+                                    'generic' if self.annotations_filename is None else self.annotations_filename)
+        os.makedirs(node_embeds_path_prefix, exist_ok=True)
 
+        node_embeds_path = osp.join(node_embeds_path_prefix, 
+                                    get_incremental_folder(node_embeds_path_prefix, next_iteration_name=True), 'node')
+
+            
         # reid embeddings
-        reid_embeds_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic' if self.annotations_filename is None else self.annotations_filename, 'reid')
-        
+        reid_embeds_path_prefix = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
+                                    'generic' if self.annotations_filename is None else self.annotations_filename)
+        os.makedirs(reid_embeds_path_prefix, exist_ok=True)
+
+        reid_embeds_path = osp.join(reid_embeds_path_prefix, 
+                                    get_incremental_folder(reid_embeds_path_prefix, next_iteration_name=True), 'reid')
+
+            
         # Frames
         frame_dir = osp.join(self.sequence_path, 'frames', self.sequence_name)
         frame_cameras = os.listdir(frame_dir)
@@ -223,10 +237,19 @@ class EmbeddingsProcessor(object):
                                           osp.join(reid_embeds_path, frame_camera),
                                           osp.join(frame_dir, frame_camera),
                                           osp.join(logs_dir_prefix, frame_camera + '.json'),
-                                          max_detections_per_df)
+                                          max_detections_per_df,
+                                          mode=mode,
+                                          augmentation=augmentation)
         
 
-    def _store_embeddings_camera(self, det_df, node_embeds_path, reid_embeds_path, frame_dir, log_dir, max_detections_per_df):
+    def _store_embeddings_camera(self, det_df, 
+                                 node_embeds_path, 
+                                 reid_embeds_path, 
+                                 frame_dir, 
+                                 log_dir, 
+                                 max_detections_per_df,
+                                 mode='train',
+                                 augmentation=None):
         """Store node and reid embeddings for detections in a camera.
         This method processes detections from a DataFrame, computes node and reid embeddings for each detection,
         and stores the embeddings in separate directories for node and reid embeddings.
@@ -245,6 +268,10 @@ class EmbeddingsProcessor(object):
             Directory containing log data necessary to retrieve image width and height.
         max_detections_per_df : int
             Maximum number of detections to process at once to avoid running out of memory.
+        mode: str
+            'train' or 'test' modes. If mode is train, image augmentation can be applied
+        augmentation: torchvision.transforms.Compose
+            A list of image transformations to augment data at training time.
 
         Notes:
         ------
@@ -295,7 +322,9 @@ class EmbeddingsProcessor(object):
                                             frame_width=log_data['frame_width'], 
                                             frame_height=log_data['frame_height'], 
                                             output_size=self.img_size,
-                                            return_det_ids_and_frame=True)
+                                            return_det_ids_and_frame=True,
+                                            mode=mode,
+                                            augmentation=augmentation)
             
             bbox_loader = DataLoader(bbox_dataset, 
                                     batch_size=self.img_batch_size, 
@@ -387,7 +416,7 @@ class EmbeddingsProcessor(object):
             torch.save(avg_subject_embed, osp.join(camera_dir_prefix_subject, 'obj_' + str(subject_id) + '.pt'))
 
 
-    def generate_average_embeddings_single_camera(self):
+    def generate_average_embeddings_single_camera(self, remove_past_iteration_data=True):
         """Process and generate average embeddings for all camera folders in the sequence.
         This method processes all camera folders in the specified sequence, calculates the average
         embeddings for subjects within each camera folder, and saves them in the designated output
@@ -398,56 +427,58 @@ class EmbeddingsProcessor(object):
             |- embeddings
             | |- sequence_name
             | |   |- annotations_filename
-            | |   |   |- node <----- IMPORTANT
-            | |   |   |   |- camera_folder_1
-            | |   |   |   |  |- <frame_1>.pt
-            | |   |   |   |  |- <frame_2>.pt
+            | |   |   |- epoch_<iteration>
+            | |   |   |   |- node <----- IMPORTANT
+            | |   |   |   |  |- camera_folder_1
+            | |   |   |   |  |  |- <frame_1>.pt
+            | |   |   |   |  |  |- <frame_2>.pt
+            | |   |   |   |  |  |- ...
+            | |   |   |   |  |- camera_folder_2
+            | |   |   |   |  |  |- <frame_1>.pt
+            | |   |   |   |  |  |- <frame_2>.pt
+            | |   |   |   |  |  |- ...
             | |   |   |   |  |- ...
-            | |   |   |   |- camera_folder_2
-            | |   |   |   |  |- <frame_1>.pt
-            | |   |   |   |  |- <frame_2>.pt
-            | |   |   |   |  |- ...
-            | |   |   |   |- ...
 
         The output directory structure will be organized as follows:
         - sequence_path_prefix
           |- embeddings
           | |- sequence_name
           | |   |- annotations_filename
-          | |   |   |- avg <---- IMPORTANT
-          | |   |   |   |- camera_folder_1
-          | |   |   |   |  |- obj_<subject_id_1>.pt
-          | |   |   |   |  |- obj_<subject_id_2>.pt
+          | |   |   |- epoch_{iteration}
+          | |   |   |   |- avg <---- IMPORTANT
+          | |   |   |   |  |- camera_folder_1
+          | |   |   |   |  |  |- obj_<subject_id_1>.pt
+          | |   |   |   |  |  |- obj_<subject_id_2>.pt
+          | |   |   |   |  |  |- ...
+          | |   |   |   |  |- camera_folder_2
+          | |   |   |   |  |  |- obj_<subject_id_1>.pt
+          | |   |   |   |  |  |- obj_<subject_id_2>.pt
+          | |   |   |   |  |  |- ...
           | |   |   |   |  |- ...
-          | |   |   |   |- camera_folder_2
-          | |   |   |   |  |- obj_<subject_id_1>.pt
-          | |   |   |   |  |- obj_<subject_id_2>.pt
-          | |   |   |   |  |- ...
-          | |   |   |   |- ...
 
         If the output directory already exists, it will be deleted and recreated to store new average
         embeddings.
 
         Parameters
         ============
-        None
+        remove_past_iteration_data: boolean
+            If true, comptued emebddings from past iteration will be removed, to save space.
 
         Returns
         ============
         None
         """
-        sequence_path_prefix = osp.join(self.sequence_path, "embeddings", self.sequence_name, self.annotations_filename)
+        sequence_path_prefix_ = osp.join(self.sequence_path, "embeddings", self.sequence_name, self.annotations_filename)
+        sequence_path_prefix = osp.join(sequence_path_prefix, get_incremental_folder(sequence_path_prefix_, next_iteration_name=True))
+
+        # Remove data from past iteration if needed.
+        if remove_past_iteration_data and get_incremental_folder(sequence_path_prefix_, next_iteration_name=False):
+            shutil.rmtree(osp.join(sequence_path_prefix_, get_incremental_folder(sequence_path_prefix_, next_iteration_name=False)))
+
         frames_sequence_path_prefix = osp.join(sequence_path_prefix, "node")
         subjects_sequence_path_prefix = osp.join(sequence_path_prefix, "avg")
 
-        # If output directories already exist, then delete them and create them again
-        if osp.exists(subjects_sequence_path_prefix):
-            print("Found existing average embeddings. Deleting them and replacing them for new ones")
-            shutil.rmtree(subjects_sequence_path_prefix)
-        os.makedirs(subjects_sequence_path_prefix)
-
         camera_folders = os.listdir(frames_sequence_path_prefix)
-        print(camera_folders)
         partial_generate_function = partial(self._generate_average_embeddings_single_camera, 
                                             frames_sequence_path_prefix, 
                                             subjects_sequence_path_prefix)

@@ -3,10 +3,10 @@ import os
 import os.path as osp
 sys.path.insert(1, osp.abspath('.'))
 
-from data_processor.video_processor import VideoProcessor
-from data_processor.utils import load_config
+from modules.data_processor.video_processor import VideoProcessor
+from modules.data_processor.utils import load_config
 
-common_config, _ = load_config("config/processing.yml",
+common_config, _ = load_config("config/preprocessing.yml",
                                          "02_extract_frames")
 
 

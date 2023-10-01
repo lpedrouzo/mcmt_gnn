@@ -52,3 +52,31 @@ def load_config(config_path:str, task_name:str):
         else:
             task_config = None
     return common_config, task_config
+
+
+def get_incremental_folder(path, next_iteration_name=False):
+    """ COmputes the folder name for the next Epoch based on 
+    the indices of existing folders in the filesystem.
+
+    Parameters
+    ==========
+    path: str
+        The path where the incrementally named folders will be.
+    next_iteration_name: bool
+        Whether to return the folder for the next iteration or the current iteration.
+        Example: if next_iteration_name == True -> return epoch_{i + 1} else epoch_{i}
+
+    Returns
+    ==========
+    str
+        The name of the folder for the next iteration.
+    
+    """
+    folders = os.listdir(path)
+    if len(folders):
+        epoch_indices = [int(folder.split("_")[-1]) for folder in folders if folder.startswith("epoch_")]
+
+        if len(epoch_indices):
+            return f"epoch_{max(epoch_indices) + (1 if next_iteration_name else 0)}"
+
+    return "epoch_0" if next_iteration_name else None
