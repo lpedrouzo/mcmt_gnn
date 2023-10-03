@@ -2,14 +2,15 @@
 training_config:
   checkpoint_path_prefix: 'results'
   load_previous_train_state: true
-  epochs: 5
+  epochs: 100
   dataset:
-    sequence_path_prefix: 'datasets/AIC20/'
+    sequence_path_prefix: 'datasets/AIC22/'
     sequences_train: 
       - 'S01'
       - 'S04'
-    sequences_val: 
       - 'S03'
+    sequences_val: 
+      - 'S02'
     annotations_filename: 'gt.txt'
   loss:
     loss_type: 'ce_custom' # 'ce' - 'focal' - 'bce'
@@ -18,11 +19,11 @@ training_config:
   lr_scheduler:
     scheduler_type: 'step'
     step_size: 1
-    gamma: 0.995
-    warmup_duration: 3
+    gamma: 0.999
+    warmup_duration: 5
   optimizer:
-    lr: 0.05
-    momentum: 0
+    lr: 0.01
+    momentum: 0.9
     dampening: 0
 
 # Configuration parameters for the GNN architecture
@@ -40,7 +41,7 @@ gnn_arch:
       edge_out_dim: 4 
 
     nodes:
-      node_in_dim: 768
+      node_in_dim: 2048
       node_fc_dims: [1024,512, 128]
       node_out_dim: 32
       dropout_p: 0.1
