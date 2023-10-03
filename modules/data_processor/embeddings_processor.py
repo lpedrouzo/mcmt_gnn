@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import multiprocessing
 
-from .utils import try_loading_logs, get_incremental_folder
+from .utils import try_loading_logs, get_incremental_folder, get_previous_folder
 from ..torch_dataset.bounding_box_dataset import BoundingBoxDataset
 from torch.utils.data import DataLoader
 from time import time
@@ -469,11 +469,15 @@ class EmbeddingsProcessor(object):
         None
         """
         sequence_path_prefix_ = osp.join(self.sequence_path, "embeddings", self.sequence_name, self.annotations_filename)
-        sequence_path_prefix = osp.join(sequence_path_prefix, get_incremental_folder(sequence_path_prefix_, next_iteration_name=True))
 
+        if get_incremental_folder(sequence_path_prefix_, next_iteration_name=False):
+            sequence_path_prefix = osp.join(sequence_path_prefix_, get_incremental_folder(sequence_path_prefix_, next_iteration_name=False))
+        else:
+            raise Exception(f"There are no embeddings stored in {sequence_path_prefix_}")
+        
         # Remove data from past iteration if needed.
-        if remove_past_iteration_data and get_incremental_folder(sequence_path_prefix_, next_iteration_name=False):
-            shutil.rmtree(osp.join(sequence_path_prefix_, get_incremental_folder(sequence_path_prefix_, next_iteration_name=False)))
+        if remove_past_iteration_data and get_previous_folder(sequence_path_prefix_):
+            shutil.rmtree(osp.join(sequence_path_prefix_, get_previous_folder(sequence_path_prefix_)))
 
         frames_sequence_path_prefix = osp.join(sequence_path_prefix, "node")
         subjects_sequence_path_prefix = osp.join(sequence_path_prefix, "avg")

@@ -5,6 +5,7 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from torch_geometric.data import Data, Dataset
+from ..data_processor.utils import get_incremental_folder, get_previous_folder
 
 class SequenceGraphDataset(Dataset):
     """PyTorch Geometric Dataset for sequence-based graph data.
@@ -187,7 +188,14 @@ class SequenceGraphDataset(Dataset):
         for sequence_name in self.sequence_names:
             print(f"Generating graph for {sequence_name}")
 
-            camera_folders_prefix = osp.join(self.sequence_path_prefix, "embeddings", sequence_name, self.annotations_filename, "avg")
+            # Set the path prefix with the correct epoch folder
+            camera_folders_prefix_ = osp.join(self.sequence_path_prefix, "embeddings", sequence_name, self.annotations_filename)
+
+            if get_incremental_folder(camera_folders_prefix_, next_iteration_name=False):
+                camera_folders_prefix = osp.join(camera_folders_prefix_, get_incremental_folder(camera_folders_prefix_, next_iteration_name=False), "avg")
+            else:
+                raise Exception(f"There are no embeddings stored in {camera_folders_prefix_}")
+            
             camera_folders = os.listdir(camera_folders_prefix)
             
             # Loading node information, embeddings, and labels (object ids) for all cameras in the sequence
