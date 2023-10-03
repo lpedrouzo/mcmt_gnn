@@ -34,6 +34,7 @@ if __name__ == '__main__':
     print("Extracting embeddings for training sequences")
     # Iterate over all of the sequences
     for sequence_name in task_config['train_sequences']:
+        print(f"Working on {sequence_name}")
 
         # Instantiate the embeddings processor for train sequences
         emb_proc = EmbeddingsProcessor(inference_mode=False, 
@@ -54,6 +55,7 @@ if __name__ == '__main__':
 
     print("Extracting embeddings for testing sequences")
     for sequence_name in task_config['test_sequences']:
+        print(f"Working on {sequence_name}")
 
          # Instantiate the embeddings processor for test sequences
         emb_proc = EmbeddingsProcessor(inference_mode=False, 

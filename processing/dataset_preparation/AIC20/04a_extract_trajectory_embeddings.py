@@ -10,7 +10,7 @@ from collections import defaultdict
 from modules.data_processor.embeddings_processor import EmbeddingsProcessor
 from modules.data_processor.utils import load_config
 
-common_config, _ = load_config("config/processing.yml", 
+common_config, _ = load_config("config/preprocessing.yml", 
                                "04a_extract_trajectory_embeddings")
 
 if __name__ == "__main__":
@@ -21,7 +21,7 @@ if __name__ == "__main__":
                                        sequence_path=common_config['sequence_path'], 
                                        sequence_name=sequence_name, 
                                        annotations_filename=common_config['annotations_filename'])
-        emb_proc.generate_average_embeddings_single_camera()
+        emb_proc.generate_average_embeddings_single_camera(remove_past_iteration_data=common_config['remove_past_epoch_embeddings'])
                 
         
 
