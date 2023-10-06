@@ -18,8 +18,8 @@ training_config:
     gamma: 2
   lr_scheduler:
     scheduler_type: 'step'
-    step_size: 1
-    gamma: 0.999
+    step_size: 50
+    gamma: 0.1
     warmup_duration: 5
   optimizer:
     lr: 0.01
@@ -29,7 +29,7 @@ training_config:
 # Configuration parameters for the GNN architecture
 gnn_arch:
   node_agg_fn: 'sum'
-  num_enc_steps: 10  # before 4 Number of message passing steps
+  num_enc_steps: 1  # before 4 Number of message passing steps
   num_class_steps: 1  # before 3Number of message passing steps during feature vectors are classified (after Message Passing)
   reattach_initial_nodes: False  # elg. Original: False Determines whether initially encoded node feats are used during node updates
   reattach_initial_edges: False  #  elg. Original: TrueDetermines whether initially encoded edge feats are used during node updates
@@ -49,7 +49,7 @@ gnn_arch:
 
   # MPN edge update
   edge_model_feats_dict:
-    fc_dims: [4] 
+    fc_dims: [4, 4] 
     dropout_p: 0.1
     use_batchnorm: True
 
