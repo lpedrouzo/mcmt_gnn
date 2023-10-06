@@ -2,13 +2,13 @@
 This repo is currently under active development. I know documentation needs a little bit of housekeeping. Just hang tight, we will get there
 once the solution is good enough. I need to graduate first, then we can take care of making the documentation pretty.
 
-# Setting up the workspace
+#### Note
+For an overview of how this repository is organized, what the folders and scripts mean, please see repo_organization.md.
 
-## Dataset
+## Setting up the workspace
 
 IMPORTANT. Before setting up the repository, make sure you have access to the [Nvidia AI City Challenge](https://www.aicitychallenge.org/2021-track3-download/) (AIC) dataset.
 
-## Env, pip packages, REID models
 Clone the repository and change directory:
 
 ```bash
@@ -51,7 +51,7 @@ mv <AIC_original_path> datasets/raw
 
 And now we should be all set to start preprocessing the data!
 
-# Preprocessing the dataset
+## Preprocessing the dataset
 Now we need to make this dataset our own! (won't be literally ours, we still need to stick to their policies).
 For this take a look at `config/preprocessing.yml` which is the configuration file for all of the preprocessing tasks.
 We need to make sure that the key `original_aic_dataset_path` is properly set by pasting the path to your raw dataset:
@@ -95,7 +95,7 @@ Then, there are also specific configurations for each task, and those configurat
   sort_column_name: 'frame'
 ```
 
-## 1. Moving videos and annotations
+### 1. Moving videos and annotations
 Execute the first task which is meant to setup basic folders in our `dataset` folder:
 
 ```
@@ -125,7 +125,7 @@ Take your time to take a look at how the files are organized by sequences and ca
 | |   |   |   |  |- gt.txt
 ```
 
-## 2. Extracting frames from videos
+### 2. Extracting frames from videos
 Now we are going to add an additional `frames` folder under `datasets` which will store all of the frames for every single video, in every camera, for every sequence.
 For this execute:
 
@@ -135,7 +135,7 @@ python processing/dataset_preparation/AIC20/02_extract_frames.py
 
 Make sure that the `sequence_path` parameter matches the actual path of where your videos and annotations are, before extracting the frames.
 
-## 3. Preprocessing annotations
+### 3. Preprocessing annotations
 This step is about including the header names in the annotation files and including new columns that will be used on subsequent tasks. Execute:
 
 ```
@@ -159,63 +159,5 @@ After a successfull execution, the annotations will have the following columns (
 - camera
 - sequence_name
 
-#### Further steps to be documented...
+### Further steps to be documented...
 
-# Organization of the repository
-
-## modules 
-There are several tools created for the realization for this project. These tools are held inside the folder `modules` which is organized as a python package (with an `__init__.py` file)
-You will find REAMDE.md files inside each folder, describing the tools and utility functions created in more depth.
-
-- **data_processor:** Python classes that will aid the preprocessing steps.
-    - annotations_processor
-    - embeddings_processor
-    - video_processor
-    - utils
-
-- **torch_dataset:** Definitions of custom pytorch datasets, including Pytorch Geometric datasets to feed the Graph Neural Network training
-    - bounding_box_dataset
-    - object_graph_dataset
-    - sequence_graph_dataset
-
-- **torch_trainer:** Definitions for training engines, meant to simplify the training process, including metrics, LR schedulers, logging, and tensorboard. Also, custom losses are define in this sub-module:
-    - custom_loss
-    - trainer_abstract
-    - trainer
-
-## models
-A centralized section of the repository where the model architectures and weights are stored.
-
-- **layers:** This folder holds custom layers or nn.Modules 
-    - MLP
-- **mcmt:** The center of it all, here lies the definitions of the Graph Neural Networks to tackle MCMT.
-    - rgnn
-- **reid:** This folder holds Convolutional Neural Network architecture definitions and weights specialized in vehicle re-identification (REID).
-    - resnet
-    - swin_transformer
-
-## processing
-This section holds the scripts that are actually executed, for preprocessing, training, inference, and evaluation. They are numbered, so that the user can know in which order they are supposed to be executed. There are some scripts that have a letter next to the number. That means that they are on the same level of execution, but they differ on the underlying logic. This is thought to support variations in the process.
-
-- **dataset_preparation:** Scripts to preprocess the raw datasets. These scripts will transform the dataset before training and will use the following modules:
-    - modules.data_processor
-- **training:** Tasks with trainning strategies. These tasks use:
-    - modules.torch_dataset
-    - modules.torch_dataloader
-    - modules.torch_trainer
-- **evaluation:** Tasks made for inference and computation of performance metrics for MCMT tracking (Not link prediction. Link prediction metrics are extracted on the training phase as indicators of direct model performance):
-    - modules.inference
-    - modules.result_extraction
-
-## config
-Configuration files for processing, training, and evaluation.
-
-## visualization
-Tools created to visualize the videos.
-
-## tests
-These are just notebooks included in the repository. They don't take part in the actual process, they just demo how to use different modules.
-- **clusters.ipynb:** This is an exploratory for a qualitative performance assessment of the quality of REID embeddings and to know the nature of the dataset.
-- **gnn_model_test.ipynb:** This notebook instantiates and tests the GNN model.
-- **graph_dataset_test.ipynb:** This notebooks instantiates and tests the graph dataset objects that were made with Pytorch Geometric (PyG).
-- **training_engine_test.ipynb:** This notebook gives a quick demo of how to use the training engine to train and test a simple model using a simple dataset.
