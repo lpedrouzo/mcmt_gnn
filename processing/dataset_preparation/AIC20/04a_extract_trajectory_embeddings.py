@@ -17,8 +17,7 @@ if __name__ == "__main__":
 
     for sequence_name in common_config['sequence_names']:
 
-        emb_proc = EmbeddingsProcessor(inference_mode=False, 
-                                       sequence_path=common_config['sequence_path'], 
+        emb_proc = EmbeddingsProcessor(sequence_path=common_config['sequence_path'], 
                                        sequence_name=sequence_name, 
                                        annotations_filename=common_config['annotations_filename'])
         emb_proc.generate_average_embeddings_single_camera(remove_past_iteration_data=common_config['remove_past_epoch_embeddings'])

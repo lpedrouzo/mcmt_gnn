@@ -37,9 +37,7 @@ if __name__ == '__main__':
         print(f"Working on {sequence_name}")
 
         # Instantiate the embeddings processor for train sequences
-        emb_proc = EmbeddingsProcessor(inference_mode=False, 
-                                    precomputed_embeddings=False,
-                                    frame_width=task_config['original_img_size'][0],
+        emb_proc = EmbeddingsProcessor(frame_width=task_config['original_img_size'][0],
                                     frame_height=task_config['original_img_size'][1],
                                     img_batch_size=task_config['img_batch_size'],
                                     img_size=task_config['cnn_img_size'],
@@ -58,9 +56,7 @@ if __name__ == '__main__':
         print(f"Working on {sequence_name}")
 
          # Instantiate the embeddings processor for test sequences
-        emb_proc = EmbeddingsProcessor(inference_mode=False, 
-                                    precomputed_embeddings=False,
-                                    frame_width=task_config['original_img_size'][0],
+        emb_proc = EmbeddingsProcessor(frame_width=task_config['original_img_size'][0],
                                     frame_height=task_config['original_img_size'][1],
                                     img_batch_size=task_config['img_batch_size'],
                                     img_size=task_config['cnn_img_size'],
