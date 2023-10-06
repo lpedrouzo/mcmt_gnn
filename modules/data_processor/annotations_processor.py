@@ -69,6 +69,7 @@ class AnnotationsProcessor(object):
     def standardize_bounding_box_columns(self):
         """ Adds xmax, ymax or width, height columns to the annotations dataframe
         if not present, and saves the dataframe back to its original place.
+        In addition it also adds the camera and sequence_name as columns.
 
         The annotations are loaded based on the sequence_path and sequence_name 
         issued in the constructor. Moreover, the annotations
@@ -94,11 +95,11 @@ class AnnotationsProcessor(object):
             log_data = try_loading_logs(log_path)
 
             if self.annotations_filename is not None:
-                annotation_folder = osp.join(annotation_folder, self.annotations_filename)
-            print(f"Procesing {annotation_folder}")
+                annotation_file = osp.join(annotation_folder, self.annotations_filename)
+            print(f"Procesing {annotation_file}")
 
             # Loading detections file 
-            det_df = pd.read_csv(osp.join(self.annotations_path_prefix, annotation_folder), 
+            det_df = pd.read_csv(osp.join(self.annotations_path_prefix, annotation_file), 
                                  sep=self.delimiter)
             
             # Adding xmax and ymax columns if not present in dataset
@@ -114,8 +115,12 @@ class AnnotationsProcessor(object):
                 det_df['width'] = xmax - det_df['xmin'].values
                 det_df['height'] = ymax - det_df['ymin'].values
 
+            # Adding camera and sequence information to the dataframe
+            det_df['camera'] = annotation_folder
+            det_df['sequence_name'] = self.sequence_name
+
             # Saving detections back to their original path
-            det_df.to_csv(osp.join(self.annotations_path_prefix, annotation_folder), 
+            det_df.to_csv(osp.join(self.annotations_path_prefix, annotation_file), 
                           sep=self.delimiter, index=False)
 
 
