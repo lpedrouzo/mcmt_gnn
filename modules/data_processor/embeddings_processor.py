@@ -16,8 +16,6 @@ from functools import partial
 class EmbeddingsProcessor(object):
 
     def __init__(self, 
-                 inference_mode:bool,
-                 precomputed_embeddings:bool=None, 
                  frame_width:int=None, 
                  frame_height:int=None, 
                  img_batch_size:int=None, 
@@ -29,8 +27,6 @@ class EmbeddingsProcessor(object):
                  annotations_sep:str=',',
                  num_workers:int=2):
         
-        self.inference_mode = inference_mode
-        self.precomputed_embeddings = precomputed_embeddings
         self.frame_width = frame_width
         self.frame_height = frame_height
         self.img_batch_size = img_batch_size
@@ -43,30 +39,8 @@ class EmbeddingsProcessor(object):
         self.annotations_sep = annotations_sep
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    def load_appearance_data(self, det_df, node_embeds_path, reid_embeds_path):
-        """
-        Loads embeddings for node features and reid.
-        Returns:
-            tuple with (reid embeddings, node_feats), both are torch.tensors with shape (num_nodes, embed_dim)
-        """
-        if self.inference_mode and not self.precomputed_embeddings:
-            assert self.cnn_model is not None
-            
-            # Compute embeddings from scatch using CNN
-            _, node_feats, reid_embeds = self._load_embeddings_from_imgs(det_df=det_df,
-                                                                        cnn_model=self.cnn_model,
-                                                                        return_imgs=False)
-        else:
-            # Load node and reid embeddings from filesystem
-            reid_embeds = self._load_precomputed_embeddings(det_df=det_df,
-                                                            embeddings_dir=node_embeds_path)
-      
-            node_feats = self._load_precomputed_embeddings(det_df=det_df,
-                                                           embeddings_dir=reid_embeds_path)
-        return reid_embeds, node_feats
 
-
-    def _load_embeddings_from_imgs(self, det_df, return_imgs = False):
+    def load_embeddings_from_imgs(self, det_df, frame_dir, fully_qualified_dir, mode, augmentation=None, return_imgs = False):
         """
         Computes embeddings for each detection in det_df with a CNN.
         Args:
@@ -84,35 +58,59 @@ class EmbeddingsProcessor(object):
         """
 
         ds = BoundingBoxDataset(det_df, 
+                                frame_dir=frame_dir,
                                 frame_width=self.frame_width, 
                                 frame_height=self.frame_height, 
                                 output_size=self.img_size,
-                                return_det_ids_and_frame=False)
+                                fully_qualified_dir=fully_qualified_dir,
+                                return_det_ids_and_frame=True,
+                                mode=mode,
+                                augmentation=augmentation)
         
         bb_loader = DataLoader(ds, 
                                batch_size=self.img_batch_size, 
-                               pin_memory=True, num_workers=self.num_workers)
+                               pin_memory=True, 
+                               num_workers=self.num_workers)
         
-        cnn_model = self.cnn_model.eval()
+        self.cnn_model.eval()
 
         bb_imgs = []
         node_embeds = []
         reid_embeds = []
+        frame_nums = []
+        det_ids = []
+        sequence_ids = []
+        camera_ids = []
+
         with torch.no_grad():
-            for bboxes in bb_loader:
-                node_out, reid_out = cnn_model(bboxes.to(self.device))
+            for frame_num, det_id, camera, sequence, bboxes in bb_loader:
+                # Compute REID embeddings
+                node_out, reid_out = self.cnn_model(bboxes.to(self.device))
+
+                # Add the info from the bounding box dataset to the lists
                 node_embeds.append(node_out.to(self.device))
                 reid_embeds.append(reid_out.to(self.device))
+                frame_nums.append(frame_num)
+                det_ids.append(det_id)
+                sequence_ids.append(sequence)
+                camera_ids.append(camera)
 
                 if return_imgs:
                     bb_imgs.append(bboxes)
 
+        # Flatten the arrays and convert to torch.tensor
+        det_ids = torch.cat(det_ids, dim=0)
+        frame_nums = torch.cat(frame_nums, dim=0)
+        sequence_ids = torch.cat(sequence_ids, dim=0)
+        camera_ids = torch.cat(camera_ids, dim=0)
+
         node_embeds = torch.cat(node_embeds, dim=0)
         reid_embeds = torch.cat(reid_embeds, dim=0)
 
-        return bb_imgs, node_embeds, reid_embeds
+        return bb_imgs, node_embeds, reid_embeds, det_ids, frame_nums, sequence_ids, camera_ids
 
-    def _load_precomputed_embeddings(self, det_df, embeddings_dir):
+
+    def load_precomputed_embeddings(self, det_df, embeddings_dir):
         """
         Given a sequence's detections, it loads from disk embeddings that have already been computed and stored for its
         detections
@@ -316,39 +314,9 @@ class EmbeddingsProcessor(object):
             sub_df_mask = det_df.frame.between(frame_start, frame_end - 1)
             sub_df = det_df.loc[sub_df_mask]
 
-            # print(sub_df.frame.min(), sub_df.frame.max())
-            bbox_dataset = BoundingBoxDataset(sub_df, 
-                                            frame_dir=frame_dir,
-                                            frame_width=log_data['frame_width'], 
-                                            frame_height=log_data['frame_height'], 
-                                            output_size=self.img_size,
-                                            return_det_ids_and_frame=True,
-                                            mode=mode,
-                                            augmentation=augmentation)
-            
-            bbox_loader = DataLoader(bbox_dataset, 
-                                    batch_size=self.img_batch_size, 
-                                    pin_memory=True,
-                                    num_workers=self.num_workers)
-
-            # Feed all bboxes to the CNN to obtain node and reid embeddings
-            self.cnn_model.eval()
-            node_embeds, reid_embeds = [], []
-            frame_nums, det_ids = [], []
-            
-            with torch.no_grad():
-                for frame_num, det_id, bboxes in bbox_loader:
-                    node_out, reid_out = self.cnn_model(bboxes.to(self.device))
-                    node_embeds.append(node_out.cpu())
-                    reid_embeds.append(reid_out.cpu())
-                    frame_nums.append(frame_num)
-                    det_ids.append(det_id)
-
-            det_ids = torch.cat(det_ids, dim=0)
-            frame_nums = torch.cat(frame_nums, dim=0)
-
-            node_embeds = torch.cat(node_embeds, dim=0)
-            reid_embeds = torch.cat(reid_embeds, dim=0)
+            # Computing embeddings from previous function
+            result = self.load_embeddings_from_imgs(sub_df, frame_dir, mode, augmentation)
+            _, node_embeds, reid_embeds, det_ids, frame_nums, _, _ = result
 
             # Add detection ids as first column of embeddings, to ensure that embeddings are loaded correctly
             node_embeds = torch.cat((det_ids.view(-1, 1).float(), node_embeds), dim=1)

@@ -158,7 +158,6 @@ class TrainingEngineAbstract(object):
         self.val_metrics_df = pd.DataFrame(columns=["epoch", *metrics])
 
 
-
     def setup_loggers(self, log_training=True, log_interval=100):
         """Set up loggers for training and validation.
 
@@ -190,8 +189,8 @@ class TrainingEngineAbstract(object):
 
                 # Log current metrics
                 for name, _ in self.metrics.items():
-                    msg += f"{name}: {metrics[name]} - "
-                    row[name] = metrics[name]
+                    msg += f"{name}: {metrics[name].cpu().tolist()} - "
+                    row[name] = metrics[name].cpu().tolist()
                 print(msg)
 
                 # This result logs will besaved to csv once trainer.run() is finished
@@ -210,8 +209,8 @@ class TrainingEngineAbstract(object):
 
             # Log current metrics
             for name, _ in self.metrics.items():
-                msg += f"{name}: {metrics[name]} - "
-                row[name] = metrics[name]
+                msg += f"{name}: {metrics[name].cpu().tolist()} - "
+                row[name] = metrics[name].cpu().tolist()
             print(msg)
 
             # This result logs will besaved to csv once trainer.run() is finished
