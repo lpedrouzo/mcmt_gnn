@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from time import time
 from tqdm import tqdm
 from functools import partial
-
+from tqdm import tqdm
 class EmbeddingsProcessor(object):
 
     def __init__(self, 
@@ -83,7 +83,7 @@ class EmbeddingsProcessor(object):
         camera_ids = []
 
         with torch.no_grad():
-            for frame_num, det_id, camera, sequence, bboxes in bb_loader:
+            for frame_num, det_id, camera, sequence, bboxes in tqdm(bb_loader):
                 # Compute REID embeddings
                 node_out, reid_out = self.cnn_model(bboxes.to(self.device))
 
@@ -99,10 +99,10 @@ class EmbeddingsProcessor(object):
                     bb_imgs.append(bboxes)
 
         # Flatten the arrays and convert to torch.tensor
-        det_ids = torch.cat(det_ids, dim=0)
-        frame_nums = torch.cat(frame_nums, dim=0)
-        sequence_ids = torch.cat(sequence_ids, dim=0)
-        camera_ids = torch.cat(camera_ids, dim=0)
+        det_ids = np.concatenate(det_ids, dim=0)
+        frame_nums = np.concatenate(frame_nums, axis=None)
+        sequence_ids = np.concatenate(sequence_ids, axis=None)
+        camera_ids = np.concatenate(camera_ids, axis=None)
 
         node_embeds = torch.cat(node_embeds, dim=0)
         reid_embeds = torch.cat(reid_embeds, dim=0)
@@ -319,8 +319,8 @@ class EmbeddingsProcessor(object):
             _, node_embeds, reid_embeds, det_ids, frame_nums, _, _ = result
 
             # Add detection ids as first column of embeddings, to ensure that embeddings are loaded correctly
-            node_embeds = torch.cat((det_ids.view(-1, 1).float(), node_embeds), dim=1)
-            reid_embeds = torch.cat((det_ids.view(-1, 1).float(), reid_embeds), dim=1)
+            node_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float(), node_embeds), dim=1)
+            reid_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float(), reid_embeds), dim=1)
 
             # Save embeddings grouped by frame
             for frame in sub_df.frame.unique():
