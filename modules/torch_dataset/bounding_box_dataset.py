@@ -16,6 +16,7 @@ class BoundingBoxDataset(Dataset):
                  frame_height:int, 
                  frame_width:int, 
                  frame_dir:str,
+                 fully_qualified_dir=True,
                  pad_:bool = True, 
                  pad_mode:str = 'mean', 
                  output_size:tuple = (128, 64),
@@ -29,6 +30,7 @@ class BoundingBoxDataset(Dataset):
         self.frame_height = frame_height
         self.frame_dir = frame_dir
         self.pad_mode = pad_mode
+        self.fully_qualified_dir = fully_qualified_dir
         self.pad = pad_
         transform_list = [Resize(output_size), 
                           ToTensor(), 
@@ -43,6 +45,8 @@ class BoundingBoxDataset(Dataset):
         # times for boxes in the same image
         self.curr_img = None
         self.curr_frame_num = None
+        self.curr_camera = None
+        self.curr_sequence = None
 
         self.return_det_ids_and_frame = return_det_ids_and_frame
 
@@ -83,12 +87,26 @@ class BoundingBoxDataset(Dataset):
         row = self.det_df.iloc[ix]
 
         # Load this bounding box' frame img, in case we haven't done it yet
-        if row['frame'] != self.curr_frame_num:
-            frame_name = osp.join(self.frame_dir, str(row['frame']).zfill(6) + ".jpg")
+        if [row['frame'], row['camera'], row['sequence_name']] != [self.curr_frame_num, self.curr_camera, self.curr_sequence]:
+            
+            # If fully qualified, then the path must contain sequence name and camera name
+            if self.fully_qualified_dir:
+                frame_name = osp.join(self.frame_dir, 
+                                      str(row['frame']).zfill(6) + ".jpg")
+            else:
+                frame_name = osp.join(self.frame_dir, 
+                                      str(row['sequence_name']), 
+                                      str(row['camera']),
+                                      str(row['frame']).zfill(6) + ".jpg")
+            # Load the image
             self.curr_img = cv2.imread(frame_name)
+
             if self.curr_img is None:
                 raise Exception(f"Img '{frame_name}' could not be loaded.")
+            
             self.curr_frame_num = row['frame']
+            self.curr_camera = row['camera']
+            self.curr_sequence = row['sequence_name']
 
         frame_img = self.curr_img
 
@@ -109,6 +127,6 @@ class BoundingBoxDataset(Dataset):
             bb_img = self.transforms(bb_img)
 
         if self.return_det_ids_and_frame:
-            return row['frame'], row['id'], bb_img
+            return row['frame'], row['id'], row['camera'], row['sequence_name'], bb_img
         else:
             return bb_img
