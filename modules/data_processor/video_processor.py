@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import os.path as osp
 import json
+import multiprocessing
 
 class VideoProcessor(object):
     """
@@ -55,7 +56,54 @@ class VideoProcessor(object):
         os.makedirs(log_dir, exist_ok=True)
         with open(osp.join(log_dir, single_camera_video+'.json'), 'w') as json_file:
             json.dump(info_dict, json_file)
-                  
+    
+    def _extract_frames_for_camera(self, 
+                                  video_dir,
+                                  output_dir, 
+                                  frame_folder, 
+                                  log_dir):
+        tStart = time.time()
+
+        # Load the video using OpenCV
+        video = cv2.VideoCapture(video_dir)
+        print("frames: ", video.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        frame_counter = 1
+
+        # Read video file and save image frames
+        while video.isOpened():
+
+            # Read frame and 
+            ret, frame = video.read()
+
+            if not ret:
+                print("End of video file.")
+                break
+            
+            # convert to RGB channel arrangement
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            frame_name = osp.join(output_dir, str(frame_counter).zfill(6) + ".jpg")
+            frame_counter += 1
+
+            cv2.imwrite(frame_name, frame)
+
+        tEnd = time.time()
+
+        # Log basic metadata about the video
+        self._log_video_metadata(
+            log_dir,
+            frame_folder,
+            {
+                "frame_width": int(video.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                "frame_height": int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                "fps": video.get(cv2.CAP_PROP_FPS),
+                "num_frames": video.get(cv2.CAP_PROP_FRAME_COUNT),
+                "frame_extraction_time": tEnd - tStart
+            }
+        )
+
+
     def store_frames(self, sequence_name) -> None:
         """
         For a list of videos, each representing a different camera in the same scene, 
@@ -88,6 +136,9 @@ class VideoProcessor(object):
 
         cameras_videos = os.listdir(video_dir)
 
+        # Create a multiprocessing pool
+        pool = multiprocessing.Pool()
+
         # Iterate over all cameras in the sequence and store images
         for single_camera_video in cameras_videos:
             
@@ -99,53 +150,19 @@ class VideoProcessor(object):
                 single_camera_video_dir = single_camera_video
                 frame_folder = single_camera_video.replace(self.video_format, '')
 
-            tStart = time.time()
-            print('Processing ' + single_camera_video)
-
-            # Load the video using OpenCV
-            video = cv2.VideoCapture(osp.join(video_dir, single_camera_video_dir))
-            print("frames: ", video.get(cv2.CAP_PROP_FRAME_COUNT))
+            video_path = osp.join(video_dir, single_camera_video_dir)
 
             # Define and create the output path 
             output_dir = osp.join(frame_dir, frame_folder)
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
 
-            frame_counter = 1
+            pool.apply_async(self._extract_frames_for_camera, (video_path, output_dir, frame_folder, log_dir))
+            print(f"Started async procedure for {single_camera_video}")
 
-            # Read video file and save image frames
-            while video.isOpened():
+        # Close the pool and wait for all processes to finish
+        pool.close()
+        pool.join()
 
-                # Read frame and 
-                ret, frame = video.read()
-
-                if not ret:
-                    print("End of video file.")
-                    break
-                
-                # convert to RGB channel arrangement
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                frame_name = osp.join(output_dir, str(frame_counter).zfill(6) + ".jpg")
-                frame_counter += 1
-
-                cv2.imwrite(frame_name, frame)
-
-            tEnd = time.time()
-
-            # Log basic metadata about the video
-            self._log_video_metadata(
-                log_dir,
-                frame_folder,
-                {
-                    "frame_width": int(video.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                    "frame_height": int(video.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                    "fps": video.get(cv2.CAP_PROP_FPS),
-                    "num_frames": video.get(cv2.CAP_PROP_FRAME_COUNT),
-                    "frame_extraction_time": tEnd - tStart
-                }
-            )
-
-            print("Frame extraction took %f sec" % (tEnd - tStart))
-
+        print("Finished extracting frames")
         
