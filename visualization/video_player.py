@@ -303,8 +303,8 @@ class VideoGridPlayer(VideoPlayer):
 
 if __name__ == "__main__":
 
-    frames_dir = 'datasets/AIC20/videos/S03'
-    bbox_dir = 'datasets/AIC20/annotations/S03'
+    frames_dir = 'datasets/AIC22/videos/S03'
+    bbox_dir = 'datasets/AIC22/annotations/S03'
     annotations_filename = 'gt.txt'
     video_filename = 'vdo.avi'
     mode = 'grid'
