@@ -18,6 +18,7 @@ class ObjectGraphDataset(Dataset):
                  embeddings_per_it, 
                  resized_img_shape, 
                  orignal_img_shape, 
+                 temporal_threshold=None,
                  augmentation=None, 
                  transform=None, 
                  pre_transform=None):
@@ -29,6 +30,7 @@ class ObjectGraphDataset(Dataset):
         self.sequence_names = sequence_names
         self.annotations_filename = annotations_filename
         self.num_ids_per_graph = num_ids_per_graph
+        self.temporal_threshold = temporal_threshold
         self.augmentation = augmentation
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -149,22 +151,27 @@ class ObjectGraphDataset(Dataset):
         node_info = {"camera": [], "node_id": [], "object_id": [], "sequence_name": []}
         trajectory_embeddings = []
         node_id = 0
-        for cam_id in torch.unique(camera_ids):
-            for obj_id in torch.unique(det_ids):
+        for cam_id in np.unique(camera_ids):
+            for obj_id in np.unique(det_ids):
 
                 # Getting all the embeddings for an object obj_id in camera cam_id
                 obj_cam_embeds = reid_embeds[(det_ids == obj_id) & (camera_ids == cam_id)]
+
+                # Temporal threshold for trajectories
+                if self.temporal_threshold:
+                   obj_cam_embeds = obj_cam_embeds[:self.temporal_threshold]
 
                 # Getting the average embedding for object trajectories
                 mean_obj_cam_embed = torch.mean(obj_cam_embeds, dim=0)
                 
                 # Saving cam, obj, node, sequence indices
-                node_info["camera"].append(cam_id.item())
-                node_info["object_id"].append(obj_id.item())
+                node_info["camera"].append(cam_id)
+                node_info["object_id"].append(obj_id)
                 node_info["node_id"].append(node_id)
-                node_info["sequence_name"].append(sequence_ids[(det_ids == obj_id) & (camera_ids == cam_id)][0].item())
+                node_info["sequence_name"].append(sequence_ids[(det_ids == obj_id) & (camera_ids == cam_id)][0])
                 trajectory_embeddings.append(mean_obj_cam_embed)
 
+            node_id += 1
         # Convert the list of mean trajectory embeddings into one tensor
         trajectory_embeddings = torch.stack(trajectory_embeddings, dim=0)
         node_labels = torch.tensor(node_df.object_id.values).to(self.device)
