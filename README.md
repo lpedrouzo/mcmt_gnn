@@ -3,7 +3,7 @@ This repo is currently under active development. I know documentation needs a li
 once the solution is good enough. I need to graduate first, then we can take care of making the documentation pretty.
 
 #### Note
-For an overview of how this repository is organized, what the folders and scripts mean, please see repo_organization.md.
+For an overview of how this repository is organized, what the folders and scripts mean, please see [repo_organization.md](https://github.com/hector6298/mcmt_gnn/blob/main/repo_organization.md).
 
 ## Setting up the workspace
 
