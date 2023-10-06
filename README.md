@@ -2,14 +2,13 @@
 This repo is currently under active development. I know documentation needs a little bit of housekeeping. Just hang tight, we will get there
 once the solution is good enough. I need to graduate first, then we can take care of making the documentation pretty.
 
-## Getting Started
+# Setting up the workspace
 
-### Dataset
+## Dataset
 
 IMPORTANT. Before setting up the repository, make sure you have access to the [Nvidia AI City Challenge](https://www.aicitychallenge.org/2021-track3-download/) (AIC) dataset.
 
-### Setting up the workspace
-
+## Env, pip packages, REID models
 Clone the repository and change directory:
 
 ```bash
@@ -52,7 +51,7 @@ mv <AIC_original_path> datasets/raw
 
 And now we should be all set to start preprocessing the data!
 
-### Preprocessing the dataset
+# Preprocessing the dataset
 Now we need to make this dataset our own! (won't be literally ours, we still need to stick to their policies).
 For this take a look at `config/preprocessing.yml` which is the configuration file for all of the preprocessing tasks.
 We need to make sure that the key `original_aic_dataset_path` is properly set by pasting the path to your raw dataset:
@@ -96,7 +95,7 @@ Then, there are also specific configurations for each task, and those configurat
   sort_column_name: 'frame'
 ```
 
-#### 1. Moving videos and annotations
+## 1. Moving videos and annotations
 Execute the first task which is meant to setup basic folders in our `dataset` folder:
 
 ```
@@ -126,7 +125,7 @@ Take your time to take a look at how the files are organized by sequences and ca
 | |   |   |   |  |- gt.txt
 ```
 
-#### 2. Extracting frames from videos
+## 2. Extracting frames from videos
 Now we are going to add an additional `frames` folder under `datasets` which will store all of the frames for every single video, in every camera, for every sequence.
 For this execute:
 
@@ -136,7 +135,7 @@ python processing/dataset_preparation/AIC20/02_extract_frames.py
 
 Make sure that the `sequence_path` parameter matches the actual path of where your videos and annotations are, before extracting the frames.
 
-#### 3. Preprocessing annotations
+## 3. Preprocessing annotations
 This step is about including the header names in the annotation files and including new columns that will be used on subsequent tasks. Execute:
 
 ```
@@ -162,9 +161,9 @@ After a successfull execution, the annotations will have the following columns (
 
 #### Further steps to be documented...
 
-## Organization of the repository
+# Organization of the repository
 
-### modules 
+## modules 
 There are several tools created for the realization for this project. These tools are held inside the folder `modules` which is organized as a python package (with an `__init__.py` file)
 You will find REAMDE.md files inside each folder, describing the tools and utility functions created in more depth.
 
@@ -184,12 +183,12 @@ You will find REAMDE.md files inside each folder, describing the tools and utili
     - trainer_abstract
     - trainer
 
-### models
+## models
 
-### processing
+## processing
 
-### config
+## config
 
-### tests
+## tests
 
-### visualization
+## visualization
