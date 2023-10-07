@@ -38,7 +38,7 @@ gdown 'https://drive.google.com/uc?id=12UyPVFmjoMVpQLHN07tNh4liHUmyDqg8&export=d
 Download ResNet101 - BN REID model for vehicles (see [LCFractal's repo](https://github.com/LCFractal/AIC21-MTMC) as they authors are the owners of this model):
 
 ```bash
-gdown https://drive.google.com/file/d/105guaZrBzOF92-gmo0q7yWxHJKu1bXcv/view?usp=sharing -O models/reid/resnet101_ibn_a_2.pth
+gdown 'https://drive.google.com/uc?id=1DXKpvDigCOXqoTiRObI--klRCuVQSsFM&export=download -O models/reid/resnet101_ibn_a_2.pth
 ```
 
 Move the raw AIC dataset you just downloaded into a folder inside datasets/raw folder with root on this repo:
