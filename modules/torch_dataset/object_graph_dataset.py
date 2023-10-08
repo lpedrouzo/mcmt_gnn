@@ -20,6 +20,7 @@ class ObjectGraphDataset(Dataset):
                  orignal_img_shape, 
                  temporal_threshold=None,
                  augmentation=None, 
+                 frames_num_workers=2,
                  transform=None, 
                  pre_transform=None):
 
@@ -40,7 +41,7 @@ class ObjectGraphDataset(Dataset):
                                             img_size=orignal_img_shape,
                                             img_batch_size=embeddings_per_it, 
                                             cnn_model=reid_model,
-                                            num_workers=1)
+                                            num_workers=frames_num_workers)
         
         self.all_annotations_df = self.consolidate_annotations()
         self.remaining_obj_ids = self.all_annotations_df.id.unique()

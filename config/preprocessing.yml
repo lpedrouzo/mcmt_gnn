@@ -2,13 +2,13 @@ common_params:
   annotations_filename: 'gt.txt'
   video_filename: 'vdo.avi'
   video_format: '.avi'
-  sequence_path: "datasets/AIC22/"
-  sequence_names: ["S01", "S02", "S03", "S04"]
+  sequence_path: "datasets/AIC20/"
+  sequence_names: ["S01", "S03", "S04"]
   sc_preds_filename: mtsc_deepsort_ssd512.txt
   remove_past_epoch_embeddings: false
 
 01_prep_videos_annotations:
-  original_aic_dataset_path: "datasets/raw/AIC22"
+  original_aic_dataset_path: "datasets/raw/AIC20"
   # Partitions to process
   dataset_partitions:
     - train

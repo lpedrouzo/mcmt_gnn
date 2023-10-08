@@ -99,7 +99,7 @@ class EmbeddingsProcessor(object):
                     bb_imgs.append(bboxes)
 
         # Flatten the arrays and convert to torch.tensor
-        det_ids = np.concatenate(det_ids, dim=0)
+        det_ids = np.concatenate(det_ids, axis=None)
         frame_nums = np.concatenate(frame_nums, axis=None)
         sequence_ids = np.concatenate(sequence_ids, axis=None)
         camera_ids = np.concatenate(camera_ids, axis=None)
