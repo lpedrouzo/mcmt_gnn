@@ -42,7 +42,7 @@ def move_data_to_output_folder(raw_sequence_path:str, sequence_name:str, camera_
     print(f"Moved from {camera_path} to {camera_path}")
 
 
-def process_partition(entrypoint, partition, video_path, preds_path=None, annotations_path=None):
+def process_partition(entrypoint, partition, video_path, roi_path=None, preds_path=None, annotations_path=None):
     """ Creates destination folders and copies videos and annotations
     to those destination folders.
     """
@@ -60,8 +60,13 @@ def process_partition(entrypoint, partition, video_path, preds_path=None, annota
                 # Avoid hidden folders
                 if not camera_name.startswith("."):
                     print(sequence_path, camera_name)
+
                     # 1. Move video from raw to output folder
                     move_data_to_output_folder(sequence_path, sequence_name, camera_name, video_path, "videos")
+
+                    # 2. Move roi from raw to output folder
+                    if roi_path:
+                        move_data_to_output_folder(sequence_path, sequence_name, camera_name, roi_path, "roi")
 
                     # 2. Move annotations from raw to output folder
                     if preds_path:
@@ -83,14 +88,15 @@ if __name__ == "__main__":
 
     process_partition(entrypoint, "train", 
                       common_config['video_filename'], 
+                      common_config['roi_filename'],
                       task_config['sc_train_preds_path'], 
                       task_config['annotations_path'])
 
     process_partition(entrypoint, "validation", 
                       common_config['video_filename'], 
+                      common_config['roi_filename'],
                       task_config['sc_test_preds_path'], 
                       task_config['annotations_path'])
-        
 
     # Example of raw video: "datasets/raw/AIC20/train/S01/c001/vdo.avi"
     # Example of output video: "datasets/AIC20/videos/S01/c001/vdo.avi"
