@@ -12,14 +12,16 @@ class AnnotationsProcessor(object):
     - sorting by column
     - standardizing bounding box columns regardless of the dataset
     """
-    def __init__(self, sequence_path:str, sequence_name:str, annotations_filename:str=None, delimiter:str=' '):
+    def __init__(self, sequence_path:str, sequence_name:str=None, annotations_filename:str=None, delimiter:str=' '):
         self.sequence_path = sequence_path
-        self.sequence_name = sequence_name
         self.delimiter = delimiter
         self.annotations_filename = annotations_filename
 
-        self.annotations_path_prefix = osp.join(self.sequence_path, 'annotations', self.sequence_name)
-        self.annotations = os.listdir(self.annotations_path_prefix)
+        # If sequence name is issued, then this is a single camera processor
+        if sequence_name:
+            self.sequence_name = sequence_name
+            self.annotations_path_prefix = osp.join(self.sequence_path, 'annotations', self.sequence_name)
+            self.annotations = os.listdir(self.annotations_path_prefix)
         
 
     def apply_schema(self, schema:dict):
@@ -161,3 +163,39 @@ class AnnotationsProcessor(object):
             # Saving detections back to their original path
             det_df.to_csv(osp.join(self.annotations_path_prefix, annotation_folder), 
                           sep=self.delimiter, index=False)
+
+    def consolidate_annotations(self, sequence_names:list):
+        """ Concatenate multiple annotation DataFrames into a single DataFrame.
+        This function will effectively take all the annotations
+        from all sequences, and all cameras within each sequence
+        and will concatenate them.
+
+        For this to work, each annotation file must have the columns:
+        
+        (frame,id,xmin,ymin,width,height,lost,occluded,generated,label,xmax,ymax,camera,sequence_name)
+
+        Which can be generated using modules.data_processor.annotations_processor
+
+        Parameters
+        ==========
+        sequence_names: list[str]
+            The list of sequences to load annotations from.
+
+        Returns
+        ==========
+        pd.DataFrame
+            A consolidated DataFrame containing annotations from all sequences and cameras.
+        """
+        annotations_dfs = []
+
+        # iterating through each sequence and each camera within the sequence
+        for sequence_name in sequence_names:
+            sequence_annotations_prefix = osp.join(self.sequence_path, "annotations", sequence_name)
+            for camera_name in os.listdir(sequence_annotations_prefix):
+
+                annotations_path = osp.join(sequence_annotations_prefix, 
+                                            camera_name, 
+                                            self.annotations_filename)
+                
+                annotations_dfs.append(pd.read_csv(annotations_path))
+        return pd.concat(annotations_dfs, axis=0)
