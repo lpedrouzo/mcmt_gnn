@@ -10,7 +10,8 @@ from ..data_processor.embeddings_processor import EmbeddingsProcessor
 from ..data_processor.annotations_processor import AnnotationsProcessor
 
 class ObjectGraphDataset(Dataset):
-    def __init__(self, sequence_path_prefix, 
+    def __init__(self, data_df,
+                 sequence_path_prefix, 
                  sequence_names, 
                  annotations_filename, 
                  reid_model, 
@@ -26,6 +27,7 @@ class ObjectGraphDataset(Dataset):
 
         super(ObjectGraphDataset, self).__init__(None, transform, pre_transform)
 
+        self.all_annotations_df = data_df
         self.sequence_path_prefix = sequence_path_prefix
         self.frame_dir = osp.join(self.sequence_path_prefix, "frames")
         self.sequence_names = sequence_names
@@ -34,16 +36,15 @@ class ObjectGraphDataset(Dataset):
         self.temporal_threshold = temporal_threshold
         self.augmentation = augmentation
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+        
         # This object will help computing embeddings
-        self.emb_proc = EmbeddingsProcessor(resized_img_shape[0], 
-                                            resized_img_shape[1], 
-                                            img_size=orignal_img_shape,
+        self.emb_proc = EmbeddingsProcessor(orignal_img_shape[0], 
+                                            orignal_img_shape[1], 
+                                            img_size=resized_img_shape,
                                             img_batch_size=embeddings_per_it, 
                                             cnn_model=reid_model,
                                             num_workers=frames_num_workers)
         
-        self.all_annotations_df = self.consolidate_annotations()
         self.remaining_obj_ids = self.all_annotations_df.id.unique()
 
         # Determine the number of possible iterations for this dataset
@@ -51,42 +52,6 @@ class ObjectGraphDataset(Dataset):
         self.num_available_iterations = (len_ids//num_ids_per_graph) 
         if len_ids % num_ids_per_graph:
             self.num_available_iterations += 1
-
-
-    def consolidate_annotations(self):
-        """ Concatenate multiple annotation DataFrames into a single DataFrame.
-        This function will effectively take all the annotations
-        from all sequences, and all cameras within each sequence
-        and will concatenate them.
-
-        For this to work, each annotation file must have the columns:
-        
-        (frame,id,xmin,ymin,width,height,lost,occluded,generated,label,xmax,ymax,camera,sequence_name)
-
-        Which can be generated using modules.data_processor.annotations_processor
-
-        Parameters
-        ==========
-        None
-
-        Returns
-        ==========
-        pd.DataFrame
-            A consolidated DataFrame containing annotations from all sequences and cameras.
-        """
-        annotations_dfs = []
-
-        # iterating through each sequence and each camera within the sequence
-        for sequence_name in self.sequence_names:
-            sequence_annotations_prefix = osp.join(self.sequence_path_prefix, "annotations", sequence_name)
-            for camera_name in os.listdir(sequence_annotations_prefix):
-
-                annotations_path = osp.join(sequence_annotations_prefix, 
-                                            camera_name, 
-                                            self.annotations_filename)
-                
-                annotations_dfs.append(pd.read_csv(annotations_path))
-        return pd.concat(annotations_dfs, axis=0)
     
 
     def sample_obj_ids(self, det_df, unique_obj_ids, num_ids):
@@ -169,16 +134,18 @@ class ObjectGraphDataset(Dataset):
                 node_info["camera"].append(cam_id)
                 node_info["object_id"].append(obj_id)
                 node_info["node_id"].append(node_id)
-                node_info["sequence_name"].append(sequence_ids[(det_ids == obj_id) & (camera_ids == cam_id)][0])
+                node_info["sequence_name"].append(sequence_ids[(det_ids == obj_id) & (camera_ids == cam_id)])
                 trajectory_embeddings.append(mean_obj_cam_embed)
 
             node_id += 1
+
+        # Saving info into a DataFrame
+        node_df = pd.DataFrame(node_info)
+
         # Convert the list of mean trajectory embeddings into one tensor
         trajectory_embeddings = torch.stack(trajectory_embeddings, dim=0)
         node_labels = torch.tensor(node_df.object_id.values).to(self.device)
 
-        # Saving info into a DataFrame
-        node_df = pd.DataFrame(node_info)
         return node_df, trajectory_embeddings, node_labels
         
      
@@ -290,10 +257,14 @@ class ObjectGraphDataset(Dataset):
             A PyTorch Geometric (PyG) Data object representing the sample graph.
         """
         print("Sampling object ids")
-        # Get a sample of objects from available objects in remaining_obj_ids
-        sampled_df, self.remaining_obj_ids = self.sample_obj_ids(self.all_annotations_df, 
-                                                                 self.remaining_obj_ids,
-                                                                 self.num_ids_per_graph)
+
+        if self.num_ids_per_graph == -1:
+            sampled_df = self.all_annotations_df
+        else:
+            # Get a sample of objects from available objects in remaining_obj_ids
+            sampled_df, self.remaining_obj_ids = self.sample_obj_ids(self.all_annotations_df, 
+                                                                    self.remaining_obj_ids,
+                                                                    self.num_ids_per_graph)
         print("Computing embeddings")
         # Compute embeddings for every detection for the chosen object ids
         results = self.emb_proc.load_embeddings_from_imgs(sampled_df, 
@@ -323,7 +294,7 @@ class ObjectGraphDataset(Dataset):
                      edge_attr=edge_embeddings, 
                      edge_labels=edge_labels)
         
-        return graph, node_df, edge_df
+        return graph, node_df, edge_df, sampled_df
         
 
         

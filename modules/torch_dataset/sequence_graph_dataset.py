@@ -22,10 +22,10 @@ class SequenceGraphDataset(Dataset):
 
         self.sequence_path_prefix = sequence_path_prefix
         self.graph_root = osp.join(sequence_path_prefix, "graphs")
+        self.log_root = osp.join(self.sequence_path_prefix, "logs")
         self.sequence_names = sequence_names
         self.annotations_filename = annotations_filename
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         super(SequenceGraphDataset, self).__init__(self.graph_root, transform, pre_transform)
 
 
@@ -84,6 +84,7 @@ class SequenceGraphDataset(Dataset):
         node_embeddings = torch.stack([torch.load(filepath) for filepath in node_df.embeddings_path.values]).to(self.device)
         node_labels = torch.tensor(node_df.object_id.values).to(self.device)
         print(f"Length of node_df {len(node_df)}")
+
         return node_df, node_embeddings, node_labels
 
 
@@ -161,6 +162,7 @@ class SequenceGraphDataset(Dataset):
         edge_idx = torch.tensor(edge_idx, dtype=torch.int64, device=self.device)
         edge_labels = torch.tensor(edge_labels, dtype=torch.int64, device=self.device)
         edge_embeddings = self.compute_edge_embeddings(node_embeddings, edge_idx)
+
         return edge_df, edge_idx, edge_embeddings, edge_labels
 
 
@@ -191,6 +193,7 @@ class SequenceGraphDataset(Dataset):
             # Set the path prefix with the correct epoch folder
             camera_folders_prefix_ = osp.join(self.sequence_path_prefix, "embeddings", sequence_name, self.annotations_filename)
 
+            # get_incremental_folder with False returns the folder name for the current epoch
             if get_incremental_folder(camera_folders_prefix_, next_iteration_name=False):
                 camera_folders_prefix = osp.join(camera_folders_prefix_, get_incremental_folder(camera_folders_prefix_, next_iteration_name=False), "avg")
             else:
@@ -215,8 +218,8 @@ class SequenceGraphDataset(Dataset):
             torch.save(graph, osp.join(self.graph_root, self.processed_file_names[graph_idx]))
 
             # Saving log information
-            node_df.to_json(osp.join(self.sequence_path_prefix, "logs", sequence_name, "sequence_graph_nodes.json"))
-            edge_df.to_json(osp.join(self.sequence_path_prefix, "logs", sequence_name, "sequence_graph_edges.json"))
+            node_df.to_json(osp.join(self.log_root, 'nodes_' + self.processed_file_names[graph_idx]))
+            edge_df.to_json(osp.join(self.log_root, 'edges_' + self.processed_file_names[graph_idx]))
 
             # Increment graph index
             graph_idx += 1
@@ -228,7 +231,7 @@ class SequenceGraphDataset(Dataset):
     
     
     def get(self, idx):
-        """Get a processed graph by index.
+        """Get a processed graph by the sequence index.
 
         Parameters
         ===========
@@ -240,4 +243,7 @@ class SequenceGraphDataset(Dataset):
         data : Data
             The processed graph data.
         """
-        return torch.load(osp.join(self.graph_root, self.processed_file_names[idx]))
+        data = torch.load(osp.join(self.graph_root, self.processed_file_names[idx]))
+        node_df = pd.read_json(osp.join(self.log_root, 'nodes_' + self.processed_file_names[idx]))
+        edge_df = pd.read_json(osp.join(self.log_root, 'edges_' + self.processed_file_names[idx]))
+        return data, node_df, edge_df
