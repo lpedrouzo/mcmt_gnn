@@ -2,6 +2,7 @@ common_params:
   annotations_filename: 'gt.txt'
   video_filename: 'vdo.avi'
   video_format: '.avi'
+  roi_filename: 'roi.jpg'
   sequence_path: "datasets/AIC20/"
   sequence_names: ["S01", "S03", "S04"]
   sc_preds_filename: mtsc_deepsort_ssd512.txt
