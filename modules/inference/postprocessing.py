@@ -2,6 +2,9 @@ import time
 import torch
 import numpy as np
 import networkx as nx
+import os.path as osp
+import cv2
+import pandas as pd
 from torch_scatter import scatter_add
 
 
@@ -280,3 +283,144 @@ def postprocessing(num_cameras,
     id_pred, _ = connected_componnets(G, data.num_nodes)
 
     return id_pred, torch.tensor(whole_edges_prediction)
+
+
+
+def load_roi(sequence_path, camera_name, sequence_name):
+    """ Load Region of Interest binary maps for each
+    camera.
+
+    Parameters
+    ==========
+    sequence_path: str
+        The path to the processed dataset.
+        Example: mcmt_gnn/datasets/AIC22
+    camera_name: str
+        The camera name. Ex: c001
+    sequence_name: str
+        The name of the sequence. Ex: S01
+    """
+    roi_dir = osp.join(sequence_path, "roi", sequence_name, camera_name, 'roi.jpg')
+
+    if not osp.exists(roi_dir):
+        raise ValueError(f"Missing ROI image for camera {camera_name}")
+    
+    # Load grayscale image and convert to binary image
+    binary_image = cv2.imread(roi_dir, cv2.IMREAD_GRAYSCALE)
+    binary_image = (binary_image == 255)
+
+    # Transpose if scene is in portrait
+    if binary_image.size[0] > binary_image.size[1]:
+        binary_image = binary_image.T
+
+    return binary_image
+    
+
+def is_outside_roi(row, roi):
+    """ Check if detection is inside region of interest.
+    Return False if not.
+
+    Parameter
+    =========
+    row: 
+        The dataframe row that represents a detection and must have
+        (xmin, xmax, ymin, ymax) columns.
+    roi: np.array (w,h)
+        The region of interest image as a binary map.
+    
+    Returns
+    =========
+    boolean
+        True if detection is inside region of interest.
+        False otherwise.
+    """
+    height = roi.shape[0]
+    width = roi.shape[1]
+
+    if row['xmin'] >= 0 and row['xmin'] < width:
+        if (row['ymin'] >= 0 and row['ymin'] < height and roi[row['ymin'], row['xmin']]):
+            return True
+        if row['ymax'] >= 0 and row['ymax'] < height and roi[row['ymax'], row['xmin']]:
+            return True
+    if row['xmax'] >= 0 and row['xmax'] < width:
+        if row['ymin'] >= 0 and row['ymin'] < height and roi[row['ymin'], row['xmax']]:
+            return True
+        if row['ymax'] >= 0 and row['ymax'] < height and roi[row['ymax'], row['xmax']]:
+            return True
+    return False
+
+
+def remove_non_roi(data_df):
+    """ Remove detections that correspond to areas
+    outside of the Region of Interest (RoI).
+
+    Parameters
+    ==========
+    data_df: pd.DataFrame
+        The predicitons dataframe.
+
+    Returns
+    ==========
+    pd.DataFrame
+        The predictions dataframe with non-roi detections
+        eliminated.
+    """
+    # Initialize outlier column as all false
+    data_df['outlier'] = False
+
+    # Check if detections are outlier and mark them
+    for i, row in data_df.iterrows():
+        roi = load_roi(row['camera'], row['sequence_name'])
+        if is_outside_roi(row, roi):
+            data_df.loc[i, 'outlier'] = True
+
+    # Remove outlier detections
+    return data_df[~data_df['outlier']].drop(columns=['outlier'])
+
+
+def fix_annotation_frames(gt_df, pred_df):
+    """ For a ground truth dataframe and a predictions dataframe
+    both resulting form the concatenation of multiple dataframes from
+    various cameras, change the frame index every time the camera changes
+    to avoid colisions in the computation of performance metrics.
+
+    Parameters
+    ===========
+    gt_df: pd.DataFrame
+        The ground truth annotations (detections) for multiple-cameras
+    pred_df: pd.DataFrame
+        The predicitons dataframe.
+    
+    Returns
+    ===========
+    gt_df: pd.DataFrame
+        The ground truth annotations (detections) for multiple-cameras
+        with fixed frame numbers.
+    pred_df: pd.DataFrame
+        The predicitons dataframe with fixed frame numbers.
+    """
+    gt_cameras = gt_df.camera.unique()
+    pred_cameras = pred_df.camera.unique()
+
+    gt_camera_dfs = []
+    pred_camera_dfs = []
+    max_frame = 0 
+
+    # sum frame_number every time a camera changes to avoid frame id colision
+    for camera in gt_cameras:
+        gt_camera = gt_df[gt_df['camera'] == camera]
+        max_frame_cam = gt_camera['frame'].max()
+        gt_camera['frame'] += max_frame
+        gt_camera = gt_camera.set_index(['frame', 'id'])
+        gt_camera_dfs.append(gt_camera)
+
+        if camera in pred_cameras:
+            pred_camera = pred_df[pred_df['camera'] == camera]
+            max_frame_cam = pred_camera['frame'].max()
+            pred_camera['frame'] += max_frame
+            pred_camera = pred_camera.set_index(['frame', 'id'])
+            pred_camera_dfs.append(pred_camera)
+
+        max_frame += max_frame_cam
+
+    return pd.concat(gt_df), pd.concat(pred_df)

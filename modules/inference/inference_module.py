@@ -5,22 +5,47 @@ import sys
 import os
 import os.path as osp
 import pandas as pd
+import cv2
+import motmetrics as mm
 from datetime import datetime
 from ignite.metrics import Precision, Recall, Accuracy, Loss
 from ignite.engine import Engine, Events
 from ignite.handlers import ModelCheckpoint, global_step_from_engine, create_lr_scheduler_with_warmup, Checkpoint
-from .postprocessing import postprocessing
+from .postprocessing import postprocessing, fix_annotation_frames, remove_non_roi
 
 class InferenceModule(nn.Module):
-    def __init__(self, model, num_cameras):
+    """ A class to perform inference on a given sequence
+    and extra methods to generate  and evaluate multi-camera tracks
+    """
+    def __init__(self, model, data_df, sequence_path):
         super().__init__()
         self.model = model
         self.model.eval()
-
-        self.num_cameras = num_cameras
+        self.data_df = data_df
+        self.num_cameras = len(data_df.camera.unique())
+        self.sequence_path = sequence_path
 
     def forward(self, data):
-        with torch.no_grad():            
+        """ Generate estimations of graph connectivity
+        and post-process to obtain clusters. Each cluster
+        represent a single object, and each node within the cluster
+        represents a trajectory on a single camera.
+
+        Parameters
+        ==========
+        data: torch_geometric.data.Data
+            A graph to feed the model
+        
+        Returns
+        ==========
+        id_pred: torch.tensor
+            A tensor with the object ids after performing connected 
+            components to cluster nodes.
+        predictions: torch.tensor
+            Edge predictions from the GNN model.
+        """
+        with torch.no_grad():
+            # Output predictions from GNN            
             output_dict, _ = self.model(data)
             logits = torch.cat(output_dict['classified_edges'], dim=0)
             preds_prob = F.softmax(logits, dim=1)
@@ -28,15 +53,85 @@ class InferenceModule(nn.Module):
 
             edge_list = data.edge_index.cpu().numpy()
 
+            # Connected components output
             id_pred, predictions = postprocessing(self.num_cameras, 
                                                   preds_prob,
                                                   predictions,
                                                   edge_list,
                                                   data)
-        
-        print(predictions)
-        return predictions
+        return id_pred, predictions
     
+    def predict_tracks(self, batch, filter_roi=True):
+        """ Generate cluster predictions from the GNN and 
+        cluster components and generate a detection file 
+        with the appropriate object ids.
+
+        Parameters
+        ==========
+        batch: tuple
+            A tuple that contains a graph (torch_geometric.data.Data),
+            a DataFrame from nodes (columns: id, camera, sequence),
+            and a DataFrame from edges (columns: src_node_id, dst_node_id, 
+            src_obj_id, dst_obj_id, edge_labels)
+        filter_roi: boolean
+            Whether to filter using region of interest or not.
+        
+        Returns
+        ==========
+        data_df: pd.DataFrame
+            The predictions file
+        """
+        # Batches from our custom datasets return these vars
+        data, node_df, edge_df = batch
+
+        # Predict ids from CCs
+        id_pred, predictions = self.forward(data)
+
+        # Generate tracking dataframe
+        for n in range(len(data.x)):
+            id_new = int(id_pred[n])
+            cam_id = node_df.camera[n]
+            id_old = data.y[n]
+
+            # Assign the labels from the connected components to the detections df
+            self.data_df.loc[(self.data_df['id'] == id_old) & 
+                            (self.data_df['camera'] == cam_id),'id'] = id_new
+
+        # If required, remove detections outside region of interest
+        if filter_roi:
+            self.data_df = remove_non_roi(self.data_df)
+
+        return self.data_df
+    
+    def evaluate_mtmc(self, gt_df, th):
+        """ Use Pymotmetrics to compute multi-camera
+        multi-target performance metrics (idf, idp, idf1)
+        
+        Parameters
+        ==========
+        gt_df: pd.DataFrame
+            The ground truth dataframe with detections from 
+            all of the cameras in one single object
+        th: float
+            Threshold
+
+        Returns
+        =========
+        summary: str
+            A summary of the performance metrics provided by
+            pymotmetrics.
+        """
+        # Avoid colisions in the frame index
+        gt_df, self.data_df = fix_annotation_frames(gt_df, self.data_df)
+
+        # Compute metrics using Pymotmetrics
+        mh = mm.metrics.create()
+        accumulator = mm.utils.compare_to_groundtruth(gt_df, self.data_df, 'iou', distth=th)
+        metrics=list([mm.metrics.motchallenge_metrics, *['num_frames','idfp','idfn','idtp']])
+        summary = mh.compute(accumulator, metrics=metrics, name='MultiCam')
+
+        return summary
+            
 
 class InferenceEngineAbstract(object):
     def __init__(self, model, val_loader, results_path_prefix, metrics):
