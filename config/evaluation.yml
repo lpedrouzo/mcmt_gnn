@@ -1,0 +1,17 @@
+06_tracking_evaluation:
+  dataset_config:
+    annotations_filename: 'gt.txt'
+    evaluation_sequence: 'S02'
+    embeddings_per_iteration: 48
+    resized_img_shape: [224, 224]
+    original_img_shape: [1920, 2080]
+  motmetrics_config:
+    th: 0.7
+  paths:
+    sequence_path: "datasets/AIC20"
+    reid_model_path: "models/reid/resnet101_ibn_a_2.pth"
+    gnn_model_checkpoint: "results/checkpoints/checkpoint_100.pt"
+    ground_truth_path: "datasets/AIC20/ground_truth_S02.txt"
+    results_output_path: "results/metrics/mtmc_metrics.csv"
+
+

@@ -4,7 +4,7 @@ common_params:
   video_format: '.avi'
   roi_filename: 'roi.jpg'
   sequence_path: "datasets/AIC20/"
-  sequence_names: ["S01", "S03", "S04"]
+  sequence_names: ["S01", "S02", "S03", "S04"]
   sc_preds_filename: mtsc_deepsort_ssd512.txt
   remove_past_epoch_embeddings: false
 
@@ -25,7 +25,7 @@ common_params:
 04_extract_reid_embeddings:
   max_detections_per_df: 5000
   model_type: 'resnet'
-  model_path: '/Users/hectormejia/Documents/TFM/mcmt_gnn/models/reid/resnet101_ibn_a_2.pth'
+  model_path: 'models/reid/resnet101_ibn_a_2.pth'
   train_sequences: ["S01", "S03", "S04"]
   test_sequences: ["S02"]
   cnn_img_size: [224, 224]
