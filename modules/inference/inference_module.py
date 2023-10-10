@@ -16,6 +16,17 @@ from .postprocessing import postprocessing, fix_annotation_frames, remove_non_ro
 class InferenceModule(nn.Module):
     """ A class to perform inference on a given sequence
     and extra methods to generate  and evaluate multi-camera tracks
+
+    Example:
+    =========
+
+    dataset = ObjectGraphDataset(...)
+    graph, node_df, edge_df, sampled_df = dataset[0]
+
+    inf_module = InferenceModule(model, 
+                                 sampled_df, 
+                                 "/mcmt_gnn/datasets/AIC20")
+    inf_module.predict_tracks((graph, node_df, edge_df))
     """
     def __init__(self, model, data_df, sequence_path):
         super().__init__()
@@ -99,7 +110,7 @@ class InferenceModule(nn.Module):
 
         # If required, remove detections outside region of interest
         if filter_roi:
-            self.data_df = remove_non_roi(self.data_df)
+            self.data_df = remove_non_roi(self.sequence_path, self.data_df)
 
         return self.data_df
     
@@ -111,7 +122,10 @@ class InferenceModule(nn.Module):
         ==========
         gt_df: pd.DataFrame
             The ground truth dataframe with detections from 
-            all of the cameras in one single object
+            all of the cameras in one single object.
+            Both gt_df and the dataframe passed in the constructor of this
+            object must have the following columns:
+            ('frame', 'id', 'xmin', 'ymin', 'width', 'height')
         th: float
             Threshold
 
@@ -120,14 +134,41 @@ class InferenceModule(nn.Module):
         summary: str
             A summary of the performance metrics provided by
             pymotmetrics.
+
+        Notes
+        ========
+        pymotmetrics requires columns (FrameId, X, Y, Width, Height, Id)
+        Since this is not our convention, we transform the dataframes inside
+        this function to keep the main scripts clean and following our own 
+        convention ('frame', 'id', 'xmin', 'ymin', 'width', 'height').
         """
+
         # Avoid colisions in the frame index
-        gt_df, self.data_df = fix_annotation_frames(gt_df, self.data_df)
+        gt_df, pred_df = fix_annotation_frames(gt_df, self.data_df)
+
+        # Setting column names as motmetrics requires it
+        gt_df = gt_df.rename(columns={'frame': 'FrameId',
+                                    'xmin': 'X', 
+                                    'ymin': 'Y', 
+                                    'width': 'Width', 
+                                    'height': 'Height',
+                                    'id': 'Id'})
+
+        pred_df = pred_df.rename(columns={'frame': 'FrameId',
+                                    'xmin': 'X', 
+                                    'ymin': 'Y', 
+                                    'width': 'Width', 
+                                    'height': 'Height',
+                                    'id': 'Id'})
+
+        # Setting frame id and id as index since motmetrics requires it
+        gt_df = gt_df.set_index(['FrameId', 'Id'])
+        pred_df = pred_df.set_index(['FrameId', 'Id'])
 
         # Compute metrics using Pymotmetrics
         mh = mm.metrics.create()
-        accumulator = mm.utils.compare_to_groundtruth(gt_df, self.data_df, 'iou', distth=th)
-        metrics=list([mm.metrics.motchallenge_metrics, *['num_frames','idfp','idfn','idtp']])
+        accumulator = mm.utils.compare_to_groundtruth(gt_df, pred_df, 'iou', distth=0.7)
+        metrics=[*mm.metrics.motchallenge_metrics, *['num_frames','idfp','idfn','idtp']]
         summary = mh.compute(accumulator, metrics=metrics, name='MultiCam')
 
         return summary

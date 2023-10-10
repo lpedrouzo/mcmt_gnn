@@ -310,7 +310,7 @@ def load_roi(sequence_path, camera_name, sequence_name):
     binary_image = (binary_image == 255)
 
     # Transpose if scene is in portrait
-    if binary_image.size[0] > binary_image.size[1]:
+    if binary_image.shape[0] > binary_image.shape[1]:
         binary_image = binary_image.T
 
     return binary_image
@@ -337,20 +337,16 @@ def is_outside_roi(row, roi):
     height = roi.shape[0]
     width = roi.shape[1]
 
-    if row['xmin'] >= 0 and row['xmin'] < width:
-        if (row['ymin'] >= 0 and row['ymin'] < height and roi[row['ymin'], row['xmin']]):
-            return True
-        if row['ymax'] >= 0 and row['ymax'] < height and roi[row['ymax'], row['xmin']]:
-            return True
-    if row['xmax'] >= 0 and row['xmax'] < width:
-        if row['ymin'] >= 0 and row['ymin'] < height and roi[row['ymin'], row['xmax']]:
-            return True
-        if row['ymax'] >= 0 and row['ymax'] < height and roi[row['ymax'], row['xmax']]:
-            return True
-    return False
+    # If out of bounds
+    if (row['xmin'] > width or row['ymin'] > height or
+        row['xmin'] < 0 or row['ymin'] < 0):
+        return True
+    
+    # roi[row['ymin'], row['xmin']] == true means it is inside roi 
+    return not roi[row['ymin'], row['xmin']]
 
 
-def remove_non_roi(data_df):
+def remove_non_roi(sequence_path, data_df):
     """ Remove detections that correspond to areas
     outside of the Region of Interest (RoI).
 
@@ -370,7 +366,7 @@ def remove_non_roi(data_df):
 
     # Check if detections are outlier and mark them
     for i, row in data_df.iterrows():
-        roi = load_roi(row['camera'], row['sequence_name'])
+        roi = load_roi(sequence_path, row['camera'], row['sequence_name'])
         if is_outside_roi(row, roi):
             data_df.loc[i, 'outlier'] = True
 
@@ -410,17 +406,15 @@ def fix_annotation_frames(gt_df, pred_df):
     for camera in gt_cameras:
         gt_camera = gt_df[gt_df['camera'] == camera]
         max_frame_cam = gt_camera['frame'].max()
-        gt_camera['frame'] += max_frame
-        gt_camera = gt_camera.set_index(['frame', 'id'])
+        gt_camera.loc[:, 'frame'] += max_frame
         gt_camera_dfs.append(gt_camera)
 
         if camera in pred_cameras:
             pred_camera = pred_df[pred_df['camera'] == camera]
             max_frame_cam = pred_camera['frame'].max()
-            pred_camera['frame'] += max_frame
-            pred_camera = pred_camera.set_index(['frame', 'id'])
+            pred_camera.loc[:, 'frame'] += max_frame
             pred_camera_dfs.append(pred_camera)
 
         max_frame += max_frame_cam
 
-    return pd.concat(gt_df), pd.concat(pred_df)
+    return pd.concat(gt_camera_dfs), pd.concat(pred_camera_dfs)
