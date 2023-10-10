@@ -48,11 +48,14 @@ class ObjectGraphDataset(Dataset):
         self.remaining_obj_ids = self.all_annotations_df.id.unique()
 
         # Determine the number of possible iterations for this dataset
-        len_ids = len(self.remaining_obj_ids)
-        self.num_available_iterations = (len_ids//num_ids_per_graph) 
-        if len_ids % num_ids_per_graph:
-            self.num_available_iterations += 1
-    
+        if num_ids_per_graph == -1:
+            self.num_available_iterations = 1
+        else:
+            len_ids = len(self.remaining_obj_ids)
+            self.num_available_iterations = (len_ids//num_ids_per_graph) 
+            if len_ids % num_ids_per_graph:
+                self.num_available_iterations += 1
+        
 
     def sample_obj_ids(self, det_df, unique_obj_ids, num_ids):
         """ Sample a specified number of unique object IDs from a list of unique IDs.
