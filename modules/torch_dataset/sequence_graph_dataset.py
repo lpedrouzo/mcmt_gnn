@@ -18,7 +18,12 @@ class SequenceGraphDataset(Dataset):
     print(len(dataset))  # Number of processed graphs
     data = dataset[0]     # Access the first processed graph
     """
-    def __init__(self, sequence_path_prefix, sequence_names, annotations_filename, transform=None, pre_transform=None):
+    def __init__(self, sequence_path_prefix, 
+                 sequence_names, 
+                 annotations_filename, 
+                 return_dataframes=False, 
+                 transform=None, 
+                 pre_transform=None):
 
         self.sequence_path_prefix = sequence_path_prefix
         self.graph_root = osp.join(sequence_path_prefix, "graphs")
@@ -26,6 +31,7 @@ class SequenceGraphDataset(Dataset):
         self.sequence_names = sequence_names
         self.annotations_filename = annotations_filename
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.return_dataframes = return_dataframes
         super(SequenceGraphDataset, self).__init__(self.graph_root, transform, pre_transform)
 
 
@@ -243,7 +249,11 @@ class SequenceGraphDataset(Dataset):
         data : Data
             The processed graph data.
         """
-        data = torch.load(osp.join(self.graph_root, self.processed_file_names[idx]))
-        node_df = pd.read_json(osp.join(self.log_root, 'nodes_' + self.processed_file_names[idx]))
-        edge_df = pd.read_json(osp.join(self.log_root, 'edges_' + self.processed_file_names[idx]))
-        return data, node_df, edge_df
+        graph = torch.load(osp.join(self.graph_root, self.processed_file_names[idx]))
+
+        if self.return_dataframes:
+            node_df = pd.read_json(osp.join(self.log_root, 'nodes_' + self.processed_file_names[idx]))
+            edge_df = pd.read_json(osp.join(self.log_root, 'edges_' + self.processed_file_names[idx]))
+            return graph, node_df, edge_df
+        else:
+            return graph

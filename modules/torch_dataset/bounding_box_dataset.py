@@ -32,6 +32,7 @@ class BoundingBoxDataset(Dataset):
         self.pad_mode = pad_mode
         self.fully_qualified_dir = fully_qualified_dir
         self.pad = pad_
+        
         transform_list = [Resize(output_size), 
                           ToTensor(), 
                           Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
@@ -113,6 +114,7 @@ class BoundingBoxDataset(Dataset):
         # Crop the bounding box, and pad it if necessary to
         bb_img = frame_img[int(max(0, row['ymin'])): int(max(0, row['ymax'])),
                    int(max(0, row['xmin'])): int(max(0, row['xmax']))]
+        
         if self.pad:
             x_height_pad = np.abs(row['ymin'] - max(row['ymin'], 0)).astype(int)
             y_height_pad = np.abs(row['ymax'] - min(row['ymax'], self.frame_height)).astype(int)

@@ -22,6 +22,7 @@ class ObjectGraphDataset(Dataset):
                  temporal_threshold=None,
                  augmentation=None, 
                  frames_num_workers=2,
+                 return_dataframes=True,
                  transform=None, 
                  pre_transform=None):
 
@@ -35,6 +36,7 @@ class ObjectGraphDataset(Dataset):
         self.num_ids_per_graph = num_ids_per_graph
         self.temporal_threshold = temporal_threshold
         self.augmentation = augmentation
+        self.return_dataframes = return_dataframes
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # This object will help computing embeddings
@@ -297,7 +299,10 @@ class ObjectGraphDataset(Dataset):
                      edge_attr=edge_embeddings, 
                      edge_labels=edge_labels)
         
-        return graph, node_df, edge_df, sampled_df
+        if self.return_dataframes:
+            return graph, node_df, edge_df, sampled_df
+        else:
+            return graph
         
 
         
