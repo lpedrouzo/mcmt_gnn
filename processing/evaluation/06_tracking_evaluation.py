@@ -10,6 +10,7 @@ from modules.data_processor.annotations_processor import AnnotationsProcessor
 from models.reid.resnet import resnet101_ibn_a
 from models.mcmt.rgnn import MOTMPNet
 from modules.inference.inference_module import InferenceModule
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Loading configuration files
 with open("config/evaluation.yml") as config_file:
@@ -22,7 +23,7 @@ with open("config/training_rgcnn.yml", "r") as arch_file:
     gnn_arch = config["gnn_arch"]
 
 # Loading REID model to generate embeddings for the test dataset
-reid_model = resnet101_ibn_a(model_path=path_config['reid_model_path'], device="cpu")
+reid_model = resnet101_ibn_a(model_path=path_config['reid_model_path'], device=device)
 
 # Consolidating annotations from all cameras in S02 into a single dataframe
 data_df = AnnotationsProcessor(sequence_path=path_config['sequence_path'],
