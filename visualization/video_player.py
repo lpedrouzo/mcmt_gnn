@@ -1,7 +1,11 @@
 import cv2
 import os
+import sys
 import os.path as osp
+sys.path.insert(1, osp.abspath('.'))
 import pandas as pd
+import numpy as np
+from modules.inference.postprocessing import load_roi
 
 class VideoPlayer:
     def __init__(self, frames_dir, bbox_dir, annotations_filename, video_filename):
@@ -23,6 +27,7 @@ class VideoPlayer:
         self.current_video_index = 0
         self.current_frame_number = 0
         self.paused = False
+        
 
         if not self.video_folders:
             print("No video folders found.")
@@ -204,7 +209,11 @@ class VideoGridPlayer(VideoPlayer):
         List of paths to CSV files containing object detection data.
     """
 
-    def __init__(self, frames_dir, bbox_dir, annotations_filename, video_filename):
+    def __init__(self, frames_dir,
+                 bbox_dir, 
+                 annotations_filename,
+                 video_filename,
+                 roi_dir=None):
         """
         Initialize the VideoGridVisualizer instance.
 
@@ -218,11 +227,13 @@ class VideoGridPlayer(VideoPlayer):
 
         self.frames_dir = frames_dir
         self.bbox_dir = bbox_dir
+        self.roi_dir = roi_dir
         self.annotations_filename = annotations_filename
         self.video_filename = video_filename
         self.video_folders = [folder for folder in os.listdir(self.frames_dir) if os.path.isdir(os.path.join(self.frames_dir, folder))]
         self.current_frame_number = 0
         self.paused = False
+        self.cutoff_index = int(np.ceil(len(self.video_folders)/2))
         
         if not self.video_folders:
             print("No video folders found.")
@@ -232,6 +243,15 @@ class VideoGridPlayer(VideoPlayer):
         self.video_caps = [video[1] for video in self.video_data]
         self.csv_data = [video[0] for video in self.video_data]
 
+        self.roi_dict = {} 
+
+        # Load roi as a layer of red color
+        if roi_dir:
+            for camera in self.video_folders:
+                roi = load_roi(roi_dir, camera).astype(np.uint8)*255
+                roi_3c = cv2.cvtColor(roi, cv2.COLOR_GRAY2BGR)
+                roi_3c[:,:, 0] = 0; roi_3c[:,:,1] = 0
+                self.roi_dict[camera] = roi_3c
 
     def draw_lines_between_detections(self, frames, df_list):
         """
@@ -270,6 +290,11 @@ class VideoGridPlayer(VideoPlayer):
                 ret, frame = cap.read()
                 if not ret:
                     break
+
+                # If RoIs are available, add an overlay
+                if self.roi_dir:
+                    frame = cv2.addWeighted(frame, 1, self.roi_dict[df.loc[0,'camera']], 0.2, 0)
+
                 frame = self.draw_annotations(frame, df)
                 frames.append(frame)
 
@@ -285,8 +310,8 @@ class VideoGridPlayer(VideoPlayer):
                 if frames[i].dtype != frames[0].dtype:
                     frames[i] = cv2.convertScaleAbs(frames[i])
 
-            top_row = cv2.hconcat(frames[:3])
-            bottom_row = cv2.hconcat(frames[3:])
+            top_row = cv2.hconcat(frames[:self.cutoff_index])
+            bottom_row = cv2.hconcat(frames[self.cutoff_index:])
             grid = cv2.vconcat([top_row, bottom_row])
 
             cv2.imshow('Video Grid', grid)
@@ -303,16 +328,24 @@ class VideoGridPlayer(VideoPlayer):
 
 if __name__ == "__main__":
 
-    frames_dir = 'datasets/AIC22/videos/S03'
-    bbox_dir = 'datasets/AIC22/annotations/S03'
+    frames_dir = 'datasets/AIC20/videos/S02'
+    bbox_dir = 'datasets/AIC20/annotations/S02'
+    roi_dir = 'datasets/AIC20/roi/S02'
     annotations_filename = 'gt.txt'
     video_filename = 'vdo.avi'
     mode = 'grid'
 
     if mode == 'single':
-        player = VideoPlayer(frames_dir, bbox_dir, annotations_filename, video_filename)
+        player = VideoPlayer(frames_dir, 
+                             bbox_dir, 
+                             annotations_filename, 
+                             video_filename)
         player.play()
     elif mode == 'grid':
-        visualizer = VideoGridPlayer(frames_dir, bbox_dir, annotations_filename, video_filename)
-        visualizer.display_video_grid()
+        player = VideoGridPlayer(frames_dir, 
+                                     bbox_dir, 
+                                     annotations_filename, 
+                                     video_filename,
+                                     roi_dir)
+        player.display_video_grid()
 
