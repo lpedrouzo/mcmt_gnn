@@ -286,7 +286,7 @@ def postprocessing(num_cameras,
 
 
 
-def load_roi(sequence_path, camera_name, sequence_name):
+def load_roi(sequence_path, camera_name, sequence_name=None):
     """ Load Region of Interest binary maps for each
     camera.
 
@@ -300,7 +300,11 @@ def load_roi(sequence_path, camera_name, sequence_name):
     sequence_name: str
         The name of the sequence. Ex: S01
     """
-    roi_dir = osp.join(sequence_path, "roi", sequence_name, camera_name, 'roi.jpg')
+    # If sequence_name is not provided, we assume that it is embedded in sequence_path
+    if sequence_name:
+        roi_dir = osp.join(sequence_path, "roi", sequence_name, camera_name, 'roi.jpg')
+    else:
+        roi_dir = osp.join(sequence_path, camera_name, 'roi.jpg')
 
     if not osp.exists(roi_dir):
         raise ValueError(f"Missing ROI image for camera {camera_name}")
