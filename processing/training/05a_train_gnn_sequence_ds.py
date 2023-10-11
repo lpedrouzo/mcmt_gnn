@@ -6,18 +6,20 @@ import yaml
 import torch
 import torch.nn.functional as F
 import torch_geometric.transforms as T
-from torch_geometric.loader import NeighborLoader, DataLoader
+import torchvision.transforms.v2 as transforms
+from torch_geometric.loader import DataLoader
 from torch.optim import SGD
 from torch.nn import CrossEntropyLoss, BCEWithLogitsLoss
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
+from modules.data_processor.annotations_processor import AnnotationsProcessor
+from models.reid.resnet import resnet101_ibn_a
 from modules.torch_trainer.trainer import TrainingEngineRGNNBinary, TrainingEngineRGNNMulticlass
 from modules.torch_trainer.custom_loss import focal_loss, CECustom
-from modules.torch_dataset.sequence_graph_dataset import SequenceGraphDataset
-from modules.torch_dataloader.custom_loader import NodeSamplingDataLoader, ObjectSamplingDataLoader
+from modules.torch_dataset.object_graph_dataset import ObjectGraphDataset
 from models.mcmt.rgnn import MOTMPNet
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Initialization
+# Initialization of configuration objects
 with open("config/training_rgcnn.yml", "r") as config_file:
     config = yaml.safe_load(config_file)
     gnn_arch = config["gnn_arch"]
@@ -26,34 +28,79 @@ with open("config/training_rgcnn.yml", "r") as config_file:
     lr_scheduler_config = config["training_config"]["lr_scheduler"]
     loss_config = config["training_config"]["loss"]
     dataset_config = config["training_config"]['dataset']
-print("1. Success Opening configuration file.")
+    reid_config = training_config['reid']
+print("Success Opening configuration file.")
 
 if __name__ == "__main__":
-    # 1 - Initializing data loaders using the YAML configuration parameters
-    train_dataset = SequenceGraphDataset(sequence_path_prefix=dataset_config['sequence_path_prefix'], 
-                                        sequence_names=dataset_config['sequences_train'], 
-                                        annotations_filename=dataset_config['annotations_filename'],
-                                        transform=T.ToUndirected())
-    val_dataset = SequenceGraphDataset(sequence_path_prefix=dataset_config['sequence_path_prefix'], 
-                                    sequence_names=dataset_config['sequences_val'], 
-                                    annotations_filename=dataset_config['annotations_filename'],
-                                    transform=T.ToUndirected())
-    print("2. Success Defining torch datasets.")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)#, num_objects_per_graph=10)
-    val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True)#, num_objects_per_graph=10)
-    print("3. Success creating torch dataloaders.")
+    # Loading REID model to generate embeddings for both train and test
+    reid_model = resnet101_ibn_a(model_path=reid_config['reid_model_path'], device=device)
+
+    # Consolidating annotations from all cameras of the training sequences into a single dataframe
+    train_df = AnnotationsProcessor(
+            sequence_path=dataset_config['sequence_path_prefix'],
+            annotations_filename=dataset_config['annotations_filename']
+        ).consolidate_annotations(dataset_config['sequences_train'])
+
+    # Augmentation engine for the training dataset
+    augmentation = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomErasing(scale=(0.02, 0.15)),
+        transforms.RandomRotation(degrees=0.15),
+        transforms.RandomPerspective(distortion_scale=0.25)
+    ])
+
+    # Instantiating the Graph dataset using the detections of data_df 
+    train_dataset = ObjectGraphDataset(train_df, 
+                                       sequence_path_prefix=dataset_config['sequence_path_prefix'], 
+                                       sequence_names=dataset_config['sequences_train'], 
+                                       annotations_filename=dataset_config['annotations_filename'], 
+                                       reid_model=reid_model,
+                                       num_ids_per_graph=dataset_config['num_ids_per_graph'], 
+                                       embeddings_per_it=dataset_config['embeddings_per_iteration'], 
+                                       resized_img_shape=dataset_config['resized_img_shape'], 
+                                       orignal_img_shape=dataset_config['original_img_shape'], 
+                                       augmentation=augmentation,
+                                       return_dataframes=False)
+    
+    # Consolidating annotations from all cameras in S02 into a single dataframe
+    test_df = AnnotationsProcessor(
+            sequence_path=dataset_config['sequence_path_prefix'],
+            annotations_filename=dataset_config['annotations_filename']
+        ).consolidate_annotations(dataset_config['sequences_val'])
+
+    # Instantiating the Graph dataset using the detections of data_df 
+    val_dataset = ObjectGraphDataset(test_df, 
+                                      sequence_path_prefix=dataset_config['sequence_path_prefix'], 
+                                      sequence_names=dataset_config['sequences_val'], 
+                                      annotations_filename=dataset_config['annotations_filename'], 
+                                      reid_model=reid_model,
+                                      num_ids_per_graph=-1, # -1 means load all ids
+                                      embeddings_per_it=dataset_config['embeddings_per_iteration'], 
+                                      resized_img_shape=dataset_config['resized_img_shape'], 
+                                      orignal_img_shape=dataset_config['original_img_shape'], 
+                                      augmentation=None, # No augmentation for validation of course
+                                      return_dataframes=False) 
+    print("Success Defining torch datasets.")
+
+    train_dataloader = DataLoader(train_dataset, 
+                                  batch_size=dataset_config['train_batch_size'], 
+                                  shuffle=False)
+    val_dataloader = DataLoader(val_dataset, 
+                                batch_size=dataset_config['test_batch_size'], 
+                                shuffle=False)
+    print("Success creating torch dataloaders.")
 
     # 2 - Initializing Graph Neural Network
     gnn = MOTMPNet(gnn_arch).to(device)
-    print("4. GNN defined.")
+    print("GNN defined.")
 
     # 3 - Initialing optimizer
     optimizer = SGD(gnn.parameters(),
                     lr=optimizer_config["lr"],
                     momentum=optimizer_config["momentum"],
                     dampening=optimizer_config["dampening"])
-    print("5. Success defining optimizer.")
+    print("Success defining optimizer.")
 
 
     # 4a - Binary Cross Entropy loss
@@ -79,7 +126,7 @@ if __name__ == "__main__":
     else:
         criterion = CECustom()
         TrainingEngine = TrainingEngineRGNNMulticlass
-    print(f"6. Success creating loss function for {loss_config['loss_type']}")
+    print(f"Success creating loss function for {loss_config['loss_type']}")
 
 
     # 5 - Learning rate decay scheduler
@@ -93,7 +140,7 @@ if __name__ == "__main__":
                                         T_max=lr_scheduler_config["tmax"])
     else:
         raise Exception(f'Learning rate scheduler {lr_scheduler_config["scheduler_type"]} is not supported.')
-    print(f"7. Success creating learning rate scheduler: {lr_scheduler_config['scheduler_type']}")
+    print(f"Success creating learning rate scheduler: {lr_scheduler_config['scheduler_type']}")
 
     # 6 - Definition  of training engine using our custom object
     training_engine = TrainingEngine(train_dataloader, val_dataloader, gnn, training_config["checkpoint_path_prefix"], device)
