@@ -27,7 +27,7 @@ reid_model = resnet101_ibn_a(model_path=path_config['reid_model_path'], device=d
 
 # Consolidating annotations from all cameras in S02 into a single dataframe
 data_df = AnnotationsProcessor(sequence_path=path_config['sequence_path'],
-                               annotations_filename=dataset_config['annotations_filename']).consolidate_annotations([config['evaluation_sequence']])
+                               annotations_filename=dataset_config['annotations_filename']).consolidate_annotations(config['evaluation_sequence'])
 
 # Instantiating the Graph dataset using the detections of data_df 
 dataset = ObjectGraphDataset(data_df, 
@@ -52,6 +52,9 @@ model.load_state_dict(model_state['model'])
 # Loading the inference module for prediction of track and evaluation
 inf_module = InferenceModule(model, sampled_df, path_config['sequence_path'])
 _ = inf_module.predict_tracks(data_df)
+
+# We need to preprocess the cameras because the ground truth has cameras as ints and not as strings
+inf_module.data_df.camera = inf_module.data_df.camera.camera.apply(lambda cam: int(cam.replace('c', '')))
 
 # Loading ground truth files
 gt_df = pd.read_csv(path_config['ground_truth_path'], 

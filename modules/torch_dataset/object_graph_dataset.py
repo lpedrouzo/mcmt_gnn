@@ -80,12 +80,16 @@ class ObjectGraphDataset(Dataset):
         list
             A list of remaining unique object IDs after sampling.
         """
-        # Getting unique IDs and taking a sample of them
-        sampled_obj_ids = np.random.choice(unique_obj_ids, size=num_ids, replace=False)
+        if len(unique_obj_ids) > num_ids:
+            # Getting unique IDs and taking a sample of them
+            sampled_obj_ids = np.random.choice(unique_obj_ids, size=num_ids, replace=False)
 
-        # Getting the remaining IDs for further iterations
-        remaining_obj_ids = [id for id in unique_obj_ids if id not in sampled_obj_ids]
-
+            # Getting the remaining IDs for further iterations
+            remaining_obj_ids = [id for id in unique_obj_ids if id not in sampled_obj_ids]
+        else:
+            sampled_obj_ids = unique_obj_ids
+            remaining_obj_ids = []
+            
         # Return the DataFrame with only the sampled objects and the list of remaining IDs
         return det_df[det_df.id.isin(sampled_obj_ids)], remaining_obj_ids
 

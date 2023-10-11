@@ -10,7 +10,6 @@ import motmetrics as mm
 from datetime import datetime
 from ignite.metrics import Precision, Recall, Accuracy, Loss
 from ignite.engine import Engine, Events
-from ignite.handlers import ModelCheckpoint, global_step_from_engine, create_lr_scheduler_with_warmup, Checkpoint
 from .postprocessing import postprocessing, fix_annotation_frames, remove_non_roi
 
 class InferenceModule(nn.Module):
@@ -93,10 +92,10 @@ class InferenceModule(nn.Module):
             The predictions file
         """
         # Batches from our custom datasets return these vars
-        data, node_df, edge_df = batch
+        data, node_df, _ = batch
 
         # Predict ids from CCs
-        id_pred, predictions = self.forward(data)
+        id_pred, _ = self.forward(data)
 
         # Generate tracking dataframe
         for n in range(len(data.x)):
@@ -167,7 +166,7 @@ class InferenceModule(nn.Module):
 
         # Compute metrics using Pymotmetrics
         mh = mm.metrics.create()
-        accumulator = mm.utils.compare_to_groundtruth(gt_df, pred_df, 'iou', distth=0.7)
+        accumulator = mm.utils.compare_to_groundtruth(gt_df, pred_df, 'iou', distth=th)
         metrics=[*mm.metrics.motchallenge_metrics, *['num_frames','idfp','idfn','idtp']]
         summary = mh.compute(accumulator, metrics=metrics, name='MultiCam')
 
