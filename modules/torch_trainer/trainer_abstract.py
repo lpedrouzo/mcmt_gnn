@@ -11,6 +11,17 @@ from ignite.contrib.handlers import ProgressBar
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from functools import partial
 
+# Set a global random seed for CPU
+torch.manual_seed(11)
+
+# Set a global random seed for CUDA (GPU) if available
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(11)
+
+    # Additional CUDA configurations for reproducibility (optional)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 class TrainingEngineAbstract(object):
     """TrainingEngine is a class for managing the training process 
     of a GNN model using Pytorch Ignite.
@@ -189,8 +200,12 @@ class TrainingEngineAbstract(object):
 
                 # Log current metrics
                 for name, _ in self.metrics.items():
-                    msg += f"{name}: {metrics[name].cpu().tolist()} - "
-                    row[name] = metrics[name].cpu().tolist()
+                    if isinstance(metrics[name], torch.Tensor):
+                        metric_result = metrics[name].cpu().tolist()
+                    else:
+                        metric_result = metrics[name]
+                    msg += f"{name}: {metric_result} - "
+                    row[name] = metric_result
                 print(msg)
 
                 # This result logs will besaved to csv once trainer.run() is finished
@@ -209,8 +224,12 @@ class TrainingEngineAbstract(object):
 
             # Log current metrics
             for name, _ in self.metrics.items():
-                msg += f"{name}: {metrics[name].cpu().tolist()} - "
-                row[name] = metrics[name].cpu().tolist()
+                if isinstance(metrics[name], torch.Tensor):
+                    metric_result = metrics[name].cpu().tolist()
+                else:
+                    metric_result = metrics[name]
+                msg += f"{name}: {metric_result} - "
+                row[name] = metric_result
             print(msg)
 
             # This result logs will besaved to csv once trainer.run() is finished
