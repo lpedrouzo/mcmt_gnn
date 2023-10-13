@@ -5,9 +5,10 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from torch_geometric.data import Data, Dataset
-from ..data_processor.utils import get_incremental_folder, get_previous_folder
 from ..data_processor.embeddings_processor import EmbeddingsProcessor
 from ..data_processor.annotations_processor import AnnotationsProcessor
+
+np.random.seed(12)
 
 class ObjectGraphDataset(Dataset):
     def __init__(self, data_df,
@@ -33,10 +34,10 @@ class ObjectGraphDataset(Dataset):
         self.frame_dir = osp.join(self.sequence_path_prefix, "frames")
         self.sequence_names = sequence_names
         self.annotations_filename = annotations_filename
-        self.num_ids_per_graph = num_ids_per_graph
         self.temporal_threshold = temporal_threshold
         self.augmentation = augmentation
         self.return_dataframes = return_dataframes
+        self.initial_object_id_list = self.all_annotations_df.id.unique()
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # This object will help computing embeddings
@@ -46,20 +47,47 @@ class ObjectGraphDataset(Dataset):
                                             img_batch_size=embeddings_per_it, 
                                             cnn_model=reid_model,
                                             num_workers=frames_num_workers)
-        
-        self.remaining_obj_ids = self.all_annotations_df.id.unique()
 
         # Determine the number of possible iterations for this dataset
-        if num_ids_per_graph == -1:
-            self.num_available_iterations = 1
-        else:
-            len_ids = len(self.remaining_obj_ids)
-            self.num_available_iterations = (len_ids//num_ids_per_graph) 
-            if len_ids % num_ids_per_graph:
-                self.num_available_iterations += 1
-        
+        len_ids = len(self.initial_object_id_list)
 
-    def sample_obj_ids(self, det_df, unique_obj_ids, num_ids):
+        # If num_ids_per_graph is 0 or less, then load all the objects at once
+        self.num_ids_per_graph = num_ids_per_graph if num_ids_per_graph > 0 else len_ids
+
+        # Calculate the number of possible iterations in this dataset
+        self.num_available_iterations = (len_ids//self.num_ids_per_graph) 
+        if len_ids % num_ids_per_graph:
+            self.num_available_iterations += 1
+        
+        # Precompute the object ids to enable graph ids by the dataset
+        self.precomputed_id_samples = self.precompute_samples_for_graph_id(
+            self.initial_object_id_list,
+            self.num_ids_per_graph,
+            self.num_available_iterations
+            )
+        
+    def precompute_samples_for_graph_id(self, initial_id_list, num_ids_per_graph, num_iterations):
+        """ Computes
+
+        Parameters
+        ==========
+        None
+
+        Returns 
+        ==========
+        None
+        """
+        print("Sampling object ids")
+        precomputed_id_samples = []
+        remaining_obj_ids = initial_id_list
+
+        for _ in range(num_iterations):
+            sampled_ids, remaining_obj_ids = self.sample_obj_ids(remaining_obj_ids,
+                                                                 num_ids_per_graph)
+            precomputed_id_samples.append(sampled_ids)
+        return precomputed_id_samples
+
+    def sample_obj_ids(self, unique_obj_ids, num_ids):
         """ Sample a specified number of unique object IDs from a list of unique IDs.
 
         Parameters
@@ -91,7 +119,7 @@ class ObjectGraphDataset(Dataset):
             remaining_obj_ids = []
             
         # Return the DataFrame with only the sampled objects and the list of remaining IDs
-        return det_df[det_df.id.isin(sampled_obj_ids)], remaining_obj_ids
+        return sampled_obj_ids, remaining_obj_ids
 
 
     def setup_nodes(self, reid_embeds, det_ids, sequence_ids, camera_ids):
@@ -159,17 +187,24 @@ class ObjectGraphDataset(Dataset):
         
      
     def compute_edge_embeddings(self, node_embeddings, edge_idx):
+        """ Compute edge embeddings using l2 and cosine distances between
+        pairs of node embeddings given by edges.
+        """
         return torch.cat((
-                F.pairwise_distance(node_embeddings[edge_idx.T[0]], node_embeddings[edge_idx.T[1]]).view(-1, 1),
-                1 - F.cosine_similarity(node_embeddings[edge_idx.T[0]], node_embeddings[edge_idx.T[1]]).view(-1, 1)
+                F.pairwise_distance(node_embeddings[edge_idx.T[0]], 
+                                    node_embeddings[edge_idx.T[1]]).view(-1, 1),
+                1 - F.cosine_similarity(node_embeddings[edge_idx.T[0]], 
+                                        node_embeddings[edge_idx.T[1]]).view(-1, 1)
             ), dim=1)
     
 
     def setup_edges(self, node_df, node_embeddings):
         """Set up edge information and embeddings efficiently.
-        This function efficiently establishes edges between nodes that belong to different cameras in a DataFrame
-        containing node information. For each edge, it records the source and destination node IDs, the corresponding
-        object IDs, and assigns an edge label based on whether the source and destination nodes belong to the same object.
+        This function efficiently establishes edges between nodes that 
+        belong to different cameras in a DataFrame containing node information. 
+        For each edge, it records the source and destination node IDs, 
+        the corresponding object IDs, and assigns an edge label based on whether
+        the source and destination nodes belong to the same object.
 
         Parameters
         ===========
@@ -193,10 +228,12 @@ class ObjectGraphDataset(Dataset):
             destination nodes belong to the same object.
 
         Notes:
-            - `np.repeat` is used to repeat each element in the source node IDs and object IDs arrays, allowing for the
-            generation of pairs of source nodes that belong to the same camera with every destination node from different cameras.
-            - `np.tile` is used to create pairs of destination node IDs and object IDs by repeating the elements from the
-            different camera's nodes for each source node from the same camera.
+            - `np.repeat` is used to repeat each element in the source node IDs 
+            and object IDs arrays, allowing for the generation of pairs of source 
+            nodes that belong to the same camera with every destination node from different cameras.
+            - `np.tile` is used to create pairs of destination node IDs and object 
+            IDs by repeating the elements from the different camera's nodes 
+            for each source node from the same camera.
         """
         cameras_visited = []
         edge_idx = []
@@ -206,7 +243,9 @@ class ObjectGraphDataset(Dataset):
 
         for camera in node_df.camera.unique():
             nodes_in_camera = node_df[node_df.camera == camera].reset_index(drop=True)
-            nodes_not_in_camera = node_df[(node_df.camera != camera) & (~node_df.camera.isin(cameras_visited))].reset_index(drop=True)
+            nodes_not_in_camera = node_df[
+                (node_df.camera != camera) & (~node_df.camera.isin(cameras_visited))
+                ].reset_index(drop=True)
 
             src_node_ids_ = nodes_in_camera["node_id"].values
             dst_node_ids_ = nodes_not_in_camera["node_id"].values
@@ -265,15 +304,10 @@ class ObjectGraphDataset(Dataset):
         Data
             A PyTorch Geometric (PyG) Data object representing the sample graph.
         """
-        print("Sampling object ids")
+        # Retrieve object id sample using idx and filter detection dataset
+        id_sample = self.precomputed_id_samples[idx]
+        sampled_df = self.all_annotations_df[self.all_annotations_df.id.isin(id_sample)]
 
-        if self.num_ids_per_graph == -1:
-            sampled_df = self.all_annotations_df
-        else:
-            # Get a sample of objects from available objects in remaining_obj_ids
-            sampled_df, self.remaining_obj_ids = self.sample_obj_ids(self.all_annotations_df, 
-                                                                    self.remaining_obj_ids,
-                                                                    self.num_ids_per_graph)
         print("Computing embeddings")
         # Compute embeddings for every detection for the chosen object ids
         results = self.emb_proc.load_embeddings_from_imgs(sampled_df, 
