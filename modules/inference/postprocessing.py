@@ -15,8 +15,7 @@ def intersect(tensor1, tensor2):
 
 
 def connected_componnets(G, n_nodes):
-    """
-    Computes Strongly Connected Components (SCC) and assigns cluster IDs to nodes in a directed graph.
+    """ Computes Strongly Connected Components (SCC) and assigns cluster IDs to nodes in a directed graph.
 
     Parameters
     ===========
@@ -62,8 +61,7 @@ def connected_componnets(G, n_nodes):
 
 
 def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes):
-    """
-    Split clusters of nodes in a graph based on a specified condition.
+    """ Split clusters of nodes in a graph based on a specified condition.
 
     Parameters
     ==========
@@ -117,8 +115,7 @@ def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes):
 
 
 def pruning(data, edges_out, probs, predicted_active_edges,num_cameras):
-    """
-    Determines the proportion of Flow Conservation inequalities that are satisfied.
+    """ Determines the proportion of Flow Conservation inequalities that are satisfied.
     For each node, the sum of incoming (resp. outgoing) edge values must be less or equal than 1.
 
     Args:
@@ -197,8 +194,7 @@ def pruning(data, edges_out, probs, predicted_active_edges,num_cameras):
 
 
 def remove_edges_single_direction(active_edges, predictions, edge_list):
-    """
-    Remove edges in a single direction from active edges based on predictions.
+    """ Remove edges in a single direction from active edges based on predictions.
 
     Parameters
     ----------
@@ -239,6 +235,26 @@ def remove_edges_single_direction(active_edges, predictions, edge_list):
 
 
 def get_bidirectional_active_edges(edge_list, whole_edges_prediction):
+    """ Get form the whole set of edges, the ones that are predicted 
+    as active by the Graph Neural Network and deactivates the predicted active edges
+    that are not bidirectional, since the graph should be undirected.
+
+    Parameters
+    ==========
+    edge_list: torch.tensor
+        The list of edges (u,v) where u and v are node ids.
+    whole_edges_prediction: torch.tensor
+        The predictions from the GNN. Should be 0, or 1
+        and must have the same number of elements along the first axis as 
+        edge_list.
+    
+    Returns
+    ==========
+    whole_edges_prediction: torch.tensor
+        The new set of predictions after removing non-bidirectional edges
+    pred_active_edges: torch.tensor
+        The set of active edges after refining non-bidirectional ones
+    """
     # Get initial set of predicted active edges
     pred_active_edges = [(edge_list[0][pos], edge_list[1][pos]) 
                                for pos, p in enumerate(whole_edges_prediction) if p == 1]
@@ -256,7 +272,9 @@ def postprocessing(num_cameras,
                    whole_edges_prediction, 
                    edge_list, 
                    data):
-
+    """ Perform postprocessing procedure on the set of edge predictions.
+    The procedures follow (pruning -> connected_components -> splitting -> connected components)
+    """
     whole_edges_prediction, pred_active_edges = get_bidirectional_active_edges(edge_list, whole_edges_prediction)
     
     # Pruning edges that violates num_camera contraints
@@ -422,3 +440,51 @@ def fix_annotation_frames(gt_df, pred_df):
         max_frame += max_frame_cam
 
     return pd.concat(gt_camera_dfs), pd.concat(pred_camera_dfs)
+
+
+def filter_dets_outside_frame_bounds(det_df, frame_width, frame_height, boundary_percentage=0.05):
+    """Filter bounding boxes outside frame boundaries.
+    This function filters the rows in the input DataFrame (det_df) based on whether
+    the bounding boxes are within the specified frame boundaries. Bounding boxes that
+    fall outside the frame boundaries (with a given margin) are removed from the output.
+
+    Parameters
+    ==========
+    det_df : pandas.DataFrame
+        DataFrame containing bounding box information, including 'xmin', 'ymin',
+        'width', and 'height' columns.
+
+    frame_width : int
+        The width of the frame.
+
+    frame_height : int
+        The height of the frame.
+
+    boundary_percentage : float, optional
+        Margin as a percentage of the frame dimensions (default is 0.05, representing
+        a 5% margin).
+
+    Returns
+    ==========
+    pandas.DataFrame
+        A filtered DataFrame with only the rows containing bounding boxes within the
+        specified frame boundaries.
+
+    Example
+    ==========
+    >>> filtered_df = filter_dets_outside_frame_bounds(bounding_boxes_df, 1920, 1080)
+    """
+    # Check if bounding box x-axis is inside the frame with a margin
+    cond1 = (frame_width * boundary_percentage <= det_df['xmin'] + (det_df['width'] / 2))
+    cond2 = det_df['xmin'] + (det_df['width'] / 2) <= frame_width - (frame_width * boundary_percentage)
+    idx_x = np.logical_and(cond1, cond2)
+
+    # Check if bounding box y-axis is inside the frame with a margin
+    cond1 = (frame_height * boundary_percentage <= det_df['ymin'] + det_df['height'])
+    cond2 = det_df['ymin'] + det_df['height'] <= frame_height - frame_height * boundary_percentage
+    idx_h = np.logical_and(cond1, cond2)
+
+    # Combine both conditions to filter the DataFrame
+    idx = np.logical_and(idx_x, idx_h)
+
+    return det_df[idx]
