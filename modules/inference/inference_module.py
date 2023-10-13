@@ -10,7 +10,7 @@ import motmetrics as mm
 from datetime import datetime
 from ignite.metrics import Precision, Recall, Accuracy, Loss
 from ignite.engine import Engine, Events
-from .postprocessing import postprocessing, fix_annotation_frames, remove_non_roi
+from .postprocessing import postprocessing, fix_annotation_frames, remove_non_roi, filter_dets_outside_frame_bounds
 
 class InferenceModule(nn.Module):
     """ A class to perform inference on a given sequence
@@ -71,7 +71,11 @@ class InferenceModule(nn.Module):
                                                   data)
         return id_pred, predictions
     
-    def predict_tracks(self, batch, filter_roi=True):
+    def predict_tracks(self, batch, 
+                       frame_width=None, 
+                       frame_height=None, 
+                       filter_frame_bounds=True, 
+                       filter_roi=True):
         """ Generate cluster predictions from the GNN and 
         cluster components and generate a detection file 
         with the appropriate object ids.
@@ -106,6 +110,10 @@ class InferenceModule(nn.Module):
             # Assign the labels from the connected components to the detections df
             self.data_df.loc[(self.data_df['id'] == id_old) & 
                             (self.data_df['camera'] == cam_id),'id'] = id_new
+
+        # If required, remove detections that go beyond the frame limits
+        if filter_frame_bounds:
+            self.data_df = filter_dets_outside_frame_bounds(self.data_df, frame_width, frame_height)
 
         # If required, remove detections outside region of interest
         if filter_roi:
