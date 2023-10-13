@@ -4,6 +4,7 @@ import os.path as osp
 sys.path.insert(1, osp.abspath('.'))
 import yaml
 import torch
+import numpy as np
 import torch.nn.functional as F
 import torch_geometric.transforms as T
 import torchvision.transforms.v2 as transforms
@@ -18,6 +19,19 @@ from modules.torch_trainer.custom_loss import focal_loss, CECustom
 from modules.torch_dataset.object_graph_dataset import ObjectGraphDataset
 from models.mcmt.rgnn import MOTMPNet
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+# Set a global random seed for CPU
+torch.manual_seed(11)
+np.random.seed(42)
+
+# Set a global random seed for CUDA (GPU) if available
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(11)
+
+    # Additional CUDA configurations for reproducibility (optional)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 # Initialization of configuration objects
 with open("config/training_rgcnn.yml", "r") as config_file:
