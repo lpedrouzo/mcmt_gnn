@@ -28,19 +28,36 @@ if __name__ == "__main__":
     # Iterate over all of the sequences
     for sequence_name in common_config['sequence_names']:
 
-        # Instantiate the processor for a given sequence
-        det_proc = AnnotationsProcessor(sequence_path=common_config['sequence_path'],
-                                        sequence_name=sequence_name,
-                                        annotations_filename=common_config['annotations_filename'],
-                                        delimiter=',')
+        if task_config['preprocess_train']:
+            # Instantiate the processor for the ground truth
+            det_proc = AnnotationsProcessor(sequence_path=common_config['sequence_path'],
+                                            sequence_name=sequence_name,
+                                            annotations_filename=common_config['annotations_filename'],
+                                            delimiter=',')
 
-        # The annotations are loading directly from path and stored back in the backend
-        print("Applying schemas")
-        det_proc.apply_schema(annotations_schema)
+            # The annotations are loading directly from path and stored back in the backend
+            print("Applying schemas")
+            det_proc.apply_schema(annotations_schema)
 
-        print("Sorting DataFrames")
-        det_proc.sort_annotations_by_column(column=task_config['sort_column_name'])
+            print("Sorting DataFrames")
+            det_proc.sort_annotations_by_column(column=task_config['sort_column_name'])
 
-        print("Standardizing bounding box coordinates")
-        det_proc.standardize_bounding_box_columns()
-    
+            print("Standardizing bounding box coordinates")
+            det_proc.standardize_bounding_box_columns()
+        
+        if task_config['preprocess_test']:
+            # Instantiate the processor for the estimated tracks
+            det_proc = AnnotationsProcessor(sequence_path=common_config['sequence_path'],
+                                            sequence_name=sequence_name,
+                                            annotations_filename=task_config['track_predictions_filenames_dict'][sequence_name],
+                                            delimiter=',')
+
+            # The annotations are loading directly from path and stored back in the backend
+            print("Applying schemas")
+            det_proc.apply_schema(annotations_schema)
+
+            print("Sorting DataFrames")
+            det_proc.sort_annotations_by_column(column=task_config['sort_column_name'])
+
+            print("Standardizing bounding box coordinates")
+            det_proc.standardize_bounding_box_columns()
