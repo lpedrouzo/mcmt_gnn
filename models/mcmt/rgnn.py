@@ -6,6 +6,16 @@ from torch_scatter import scatter_mean, scatter_max, scatter_add
 # from mot_neural_solver.models.mlp import MLP
 from ..layers.mlp import MLP
 
+# Set a global random seed for CPU
+torch.manual_seed(11)
+
+# Set a global random seed for CUDA (GPU) if available
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(11)
+
+# Additional CUDA configurations for reproducibility (optional)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 class MetaLayer(torch.nn.Module):
     """
