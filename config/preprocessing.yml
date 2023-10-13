@@ -21,6 +21,13 @@ common_params:
 
 03_preprocess_annotations:
   sort_column_name: 'frame'
+  preprocess_train: true
+  preprocess_test: true
+  track_predictions_filenames_dict:
+    S01: mtsc_deepsort_ssd512.txt
+    S02: mtsc_tc_mask_rcnn.txt # No mtsc_deepsort_ssd512.txt available for S02
+    S03: mtsc_deepsort_ssd512.txt
+    S04: mtsc_deepsort_ssd512.txt
 
 04_extract_reid_embeddings:
   max_detections_per_df: 5000
