@@ -2,7 +2,7 @@
 training_config:
   checkpoint_path_prefix: 'results'
   load_previous_train_state: true
-  epochs: 1
+  epochs: 100
   dataset:
     sequence_path_prefix: 'datasets/AIC20/'
     sequences_train: 
