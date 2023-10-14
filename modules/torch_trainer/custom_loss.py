@@ -5,6 +5,7 @@ from torch import nn
 from typing import Optional, Sequence
 from torch import Tensor
 from torch.nn import CrossEntropyLoss
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class FocalLoss(nn.Module):
     """ Focal Loss, cloned exactly from repository
@@ -142,7 +143,7 @@ class CECustom(CrossEntropyLoss):
         w_1b = (n_0 + n_1) / (n_1)
         w_1 = w_1b / w_0b
         w_0 = w_0b / w_0b
-        custom_weights = torch.tensor([w_0, w_1])
+        custom_weights = torch.tensor([w_0, w_1]).to(device)
 
         loss_per_sample = self.cross_entropy_loss(preds, labels)
         loss_per_sample[labels == 0] = (loss_per_sample[labels == 0] * w_0)

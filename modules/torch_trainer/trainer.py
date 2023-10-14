@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch.nn.functional as F
 from .trainer_abstract import TrainingEngineAbstract
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TrainingEngineRGNNMulticlass(TrainingEngineAbstract):
     """Subclass for Recurrent Graph Neural Network
@@ -14,7 +15,7 @@ class TrainingEngineRGNNMulticlass(TrainingEngineAbstract):
             self.optimizer.zero_grad()
             output_dict, latent_nodes_feats = self.gnn_model(batch)
 
-            logits = torch.cat(output_dict['classified_edges'], dim=0)
+            logits = torch.cat(output_dict['classified_edges'], dim=0).to(device)
 
             loss = self.loss_fn(logits, batch.edge_labels)
             loss.backward()
@@ -27,7 +28,7 @@ class TrainingEngineRGNNMulticlass(TrainingEngineAbstract):
         def validation_step(engine, batch):
             self.gnn_model.eval()
             with torch.no_grad():
-                output_dict, latent_nodes_feats = self.gnn_model(batch)
+                output_dict, latent_nodes_feats = self.gnn_model(batch).to(device)
                 logits = torch.cat(output_dict['classified_edges'], dim=0)
             return F.softmax(logits, dim=1), batch.edge_labels
         return validation_step
