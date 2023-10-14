@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch_geometric.data import Data, Dataset
 from ..data_processor.embeddings_processor import EmbeddingsProcessor
 from ..data_processor.annotations_processor import AnnotationsProcessor
-
+from ..data_processor.utils import check_nans_df, check_nans_tensor
 np.random.seed(12)
 
 class ObjectGraphDataset(Dataset):
@@ -20,7 +20,7 @@ class ObjectGraphDataset(Dataset):
                  embeddings_per_it, 
                  resized_img_shape, 
                  orignal_img_shape, 
-                 temporal_threshold=None,
+                 temporal_threshold=1300,
                  augmentation=None, 
                  frames_num_workers=2,
                  return_dataframes=True,
@@ -183,6 +183,11 @@ class ObjectGraphDataset(Dataset):
         trajectory_embeddings = torch.stack(trajectory_embeddings, dim=0)
         node_labels = torch.tensor(node_df.object_id.values).to(self.device)
 
+        # Sanity checks
+        check_nans_df(node_df, "node_df")
+        check_nans_tensor(trajectory_embeddings, "trajectory_embeddings")
+        check_nans_tensor(node_labels, "node_labels")
+
         return node_df, trajectory_embeddings, node_labels
         
      
@@ -195,7 +200,7 @@ class ObjectGraphDataset(Dataset):
                                     node_embeddings[edge_idx.T[1]]).view(-1, 1),
                 1 - F.cosine_similarity(node_embeddings[edge_idx.T[0]], 
                                         node_embeddings[edge_idx.T[1]]).view(-1, 1)
-            ), dim=1)
+            ), dim=1).to(self.device)
     
 
     def setup_edges(self, node_df, node_embeddings):
@@ -272,12 +277,19 @@ class ObjectGraphDataset(Dataset):
             # Save visited cameras so we only get pairs of edges only once (Edge (1, 2) is equal to Edge (2,1))
             cameras_visited.append(camera)
 
-            print(f"Processed edges for camera {camera}. Shapes: ", 
-                  len(src_obj_ids), len(dst_obj_ids), len(src_node_ids), len(dst_node_ids))
+            #print(f"Processed edges for camera {camera}. Shapes: ", 
+            #      len(src_obj_ids), len(dst_obj_ids), len(src_node_ids), len(dst_node_ids))
 
-        edge_idx = torch.tensor(edge_idx, dtype=torch.int64, device=self.device)
-        edge_labels = torch.tensor(edge_labels, dtype=torch.int64, device=self.device)
+        edge_idx = torch.tensor(np.array(edge_idx), dtype=torch.int64, device=self.device)
+        edge_labels = torch.tensor(np.array(edge_labels), dtype=torch.int64, device=self.device)
         edge_embeddings = self.compute_edge_embeddings(node_embeddings, edge_idx)
+
+        # Sanity checks
+        check_nans_df(edge_df, "edge_df")
+        check_nans_tensor(edge_idx, "edge_idx")
+        check_nans_tensor(edge_labels, "edge_labels")
+        check_nans_tensor(edge_embeddings, "edge_embeddings")
+
         return edge_df, edge_idx, edge_embeddings, edge_labels
 
     def len(self):
@@ -308,6 +320,8 @@ class ObjectGraphDataset(Dataset):
         id_sample = self.precomputed_id_samples[idx]
         sampled_df = self.all_annotations_df[self.all_annotations_df.id.isin(id_sample)]
 
+        check_nans_df(sampled_df, "sampled_df")
+        
         print("Computing embeddings")
         # Compute embeddings for every detection for the chosen object ids
         results = self.emb_proc.load_embeddings_from_imgs(sampled_df, 
@@ -338,9 +352,9 @@ class ObjectGraphDataset(Dataset):
                      edge_labels=edge_labels)
         
         if self.return_dataframes:
-            return graph, node_df, edge_df, sampled_df
+            return graph.to(self.device), node_df, edge_df, sampled_df
         else:
-            return graph
+            return graph.to(self.device)
         
 
         

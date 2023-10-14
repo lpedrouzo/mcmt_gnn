@@ -2,6 +2,7 @@ import os.path as osp
 import os
 import json
 import yaml
+import torch
 
 def try_loading_logs(log_path:str):
     """ Loads a JSON file with saved video metadata from the frame extraction process
@@ -106,3 +107,20 @@ def get_previous_folder(path):
 
     # If there are no folders, or one folder return None
     return None
+
+
+def check_nans_df(df, message):
+    """ Check if there are NaN values in the DataFrame
+    """
+    has_nan = df.isna().any().any()
+
+    if has_nan:
+        raise Exception(f"The DataFrame has NaN values. {message}")
+
+def check_nans_tensor(tnsr, message):
+    """ Check for NaN values in torch.tensor
+    """
+    has_nan = torch.isnan(tnsr).any().item()
+
+    if has_nan:
+        raise Exception(f"The tensor has NaN values. {message}")
