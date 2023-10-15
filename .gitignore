@@ -3,3 +3,4 @@ datasets/*
 __pycache__/
 results/*
 .DS_Store
+mcmt_env/
