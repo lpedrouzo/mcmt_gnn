@@ -28,8 +28,8 @@ class TrainingEngineRGNNMulticlass(TrainingEngineAbstract):
         def validation_step(engine, batch):
             self.gnn_model.eval()
             with torch.no_grad():
-                output_dict, latent_nodes_feats = self.gnn_model(batch).to(device)
-                logits = torch.cat(output_dict['classified_edges'], dim=0)
+                output_dict, latent_nodes_feats = self.gnn_model(batch)
+                logits = torch.cat(output_dict['classified_edges'], dim=0).to(device)
             return F.softmax(logits, dim=1), batch.edge_labels
         return validation_step
 

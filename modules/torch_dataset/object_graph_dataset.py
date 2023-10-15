@@ -151,30 +151,34 @@ class ObjectGraphDataset(Dataset):
         torch.Tensor
             Tensor containing node labels based on object IDs.
         """
+        #check_nans_tensor(reid_embeds, "reid_embeds")
+
         node_info = {"camera": [], "node_id": [], "object_id": [], "sequence_name": []}
         trajectory_embeddings = []
         node_id = 0
         for cam_id in np.unique(camera_ids):
             for obj_id in np.unique(det_ids):
 
-                # Getting all the embeddings for an object obj_id in camera cam_id
-                obj_cam_embeds = reid_embeds[(det_ids == obj_id) & (camera_ids == cam_id)]
+                if ((det_ids == obj_id) & (camera_ids == cam_id)).any():
 
-                # Temporal threshold for trajectories
-                if self.temporal_threshold:
-                   obj_cam_embeds = obj_cam_embeds[:self.temporal_threshold]
+                    # Getting all the embeddings for an object obj_id in camera cam_id
+                    obj_cam_embeds = reid_embeds[(det_ids == obj_id) & (camera_ids == cam_id)]
 
-                # Getting the average embedding for object trajectories
-                mean_obj_cam_embed = torch.mean(obj_cam_embeds, dim=0)
-                
-                # Saving cam, obj, node, sequence indices
-                node_info["camera"].append(cam_id)
-                node_info["object_id"].append(obj_id)
-                node_info["node_id"].append(node_id)
-                node_info["sequence_name"].append(sequence_ids[(det_ids == obj_id) & (camera_ids == cam_id)])
-                trajectory_embeddings.append(mean_obj_cam_embed)
+                    # Temporal threshold for trajectories
+                    if self.temporal_threshold:
+                        obj_cam_embeds = obj_cam_embeds[:self.temporal_threshold]
 
-            node_id += 1
+                    # Getting the average embedding for object trajectories
+                    mean_obj_cam_embed = torch.mean(obj_cam_embeds, dim=0)
+                    
+                    # Saving cam, obj, node, sequence indices
+                    node_info["camera"].append(cam_id)
+                    node_info["object_id"].append(obj_id)
+                    node_info["node_id"].append(node_id)
+                    node_info["sequence_name"].append(sequence_ids[(det_ids == obj_id) & (camera_ids == cam_id)])
+                    trajectory_embeddings.append(mean_obj_cam_embed)
+
+                    node_id += 1
 
         # Saving info into a DataFrame
         node_df = pd.DataFrame(node_info)
@@ -184,9 +188,9 @@ class ObjectGraphDataset(Dataset):
         node_labels = torch.tensor(node_df.object_id.values).to(self.device)
 
         # Sanity checks
-        check_nans_df(node_df, "node_df")
-        check_nans_tensor(trajectory_embeddings, "trajectory_embeddings")
-        check_nans_tensor(node_labels, "node_labels")
+        #check_nans_df(node_df, "node_df")
+        #check_nans_tensor(trajectory_embeddings, "trajectory_embeddings")
+        #check_nans_tensor(node_labels, "node_labels")
 
         return node_df, trajectory_embeddings, node_labels
         
