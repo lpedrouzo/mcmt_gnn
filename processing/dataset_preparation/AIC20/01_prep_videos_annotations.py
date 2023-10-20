@@ -86,17 +86,12 @@ if __name__ == "__main__":
         else:
             print(f"Folder {output_path} already exists")
 
-    process_partition(entrypoint, "train", 
-                      common_config['video_filename'], 
-                      common_config['roi_filename'],
-                      task_config['sc_train_preds_path'], 
-                      task_config['annotations_path'])
-
-    process_partition(entrypoint, "validation", 
-                      common_config['video_filename'], 
-                      common_config['roi_filename'],
-                      task_config['sc_test_preds_path'], 
-                      task_config['annotations_path'])
+    for partition in task_config['dataset_partitions']:
+        process_partition(entrypoint, partition, 
+                        task_config['video_filename'], 
+                        task_config['roi_filename'],
+                        task_config['preds_path'], 
+                        task_config['annotations_path'])
 
     # Example of raw video: "datasets/raw/AIC20/train/S01/c001/vdo.avi"
     # Example of output video: "datasets/AIC20/videos/S01/c001/vdo.avi"

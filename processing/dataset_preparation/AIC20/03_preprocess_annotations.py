@@ -26,13 +26,13 @@ common_config, task_config = load_config("config/preprocessing.yml",
 
 if __name__ == "__main__":
     # Iterate over all of the sequences
-    for sequence_name in common_config['sequence_names']:
+    for sequence_name in task_config['sequences_to_process']:
 
-        if task_config['preprocess_train']:
+        if task_config['gt_filename']:
             # Instantiate the processor for the ground truth
             det_proc = AnnotationsProcessor(sequence_path=common_config['sequence_path'],
                                             sequence_name=sequence_name,
-                                            annotations_filename=common_config['annotations_filename'],
+                                            annotations_filename=task_config['gt_filename'],
                                             delimiter=',')
 
             # The annotations are loading directly from path and stored back in the backend
@@ -45,11 +45,11 @@ if __name__ == "__main__":
             print("Standardizing bounding box coordinates")
             det_proc.standardize_bounding_box_columns()
         
-        if task_config['preprocess_test']:
+        if task_config['sc_preds_filename']:
             # Instantiate the processor for the estimated tracks
             det_proc = AnnotationsProcessor(sequence_path=common_config['sequence_path'],
                                             sequence_name=sequence_name,
-                                            annotations_filename=task_config['track_predictions_filenames_dict'][sequence_name],
+                                            annotations_filename=task_config['sc_preds_filename'],
                                             delimiter=',')
 
             # The annotations are loading directly from path and stored back in the backend
