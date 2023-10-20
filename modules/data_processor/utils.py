@@ -3,6 +3,7 @@ import os
 import json
 import yaml
 import torch
+import numpy as np
 
 def try_loading_logs(log_path:str):
     """ Loads a JSON file with saved video metadata from the frame extraction process
