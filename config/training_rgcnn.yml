@@ -12,7 +12,7 @@ training_config:
     sequences_val: 
       - 'S02'
     annotations_filename: 'gt.txt'
-    num_ids_per_graph: 32
+    num_ids_per_graph: 64
     embeddings_per_iteration: 48
     resized_img_shape: [224, 224]
     original_img_shape: [1920, 1080]
