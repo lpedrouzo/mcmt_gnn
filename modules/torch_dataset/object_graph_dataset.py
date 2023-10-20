@@ -5,10 +5,11 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from torch_geometric.data import Data, Dataset
+from torch_geometric.utils.negative_sampling import negative_sampling
 from ..data_processor.embeddings_processor import EmbeddingsProcessor
-from ..data_processor.annotations_processor import AnnotationsProcessor
 from ..data_processor.utils import check_nans_df, check_nans_tensor
-np.random.seed(12)
+from .utils import simple_negative_sampling
+np.random.seed(11)
 
 class ObjectGraphDataset(Dataset):
     def __init__(self, data_df,
@@ -25,6 +26,8 @@ class ObjectGraphDataset(Dataset):
                  frames_num_workers=2,
                  return_dataframes=True,
                  transform=None, 
+                 negative_sampling=False,
+                 num_neg_samples=None,
                  pre_transform=None):
 
         super(ObjectGraphDataset, self).__init__(None, transform, pre_transform)
@@ -38,6 +41,8 @@ class ObjectGraphDataset(Dataset):
         self.augmentation = augmentation
         self.return_dataframes = return_dataframes
         self.initial_object_id_list = self.all_annotations_df.id.unique()
+        self.negative_sampling = negative_sampling
+        self.num_neg_samples = num_neg_samples
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # This object will help computing embeddings
@@ -200,12 +205,12 @@ class ObjectGraphDataset(Dataset):
         pairs of node embeddings given by edges.
         """
         return torch.cat((
-                F.pairwise_distance(node_embeddings[edge_idx.T[0]], 
-                                    node_embeddings[edge_idx.T[1]]).view(-1, 1),
-                1 - F.cosine_similarity(node_embeddings[edge_idx.T[0]], 
-                                        node_embeddings[edge_idx.T[1]]).view(-1, 1)
+                F.pairwise_distance(node_embeddings[edge_idx[0]], 
+                                    node_embeddings[edge_idx[1]]).view(-1, 1),
+                1 - F.cosine_similarity(node_embeddings[edge_idx[0]], 
+                                        node_embeddings[edge_idx[1]]).view(-1, 1)
             ), dim=1).to(self.device)
-    
+
 
     def setup_edges(self, node_df, node_embeddings):
         """Set up edge information and embeddings efficiently.
@@ -261,6 +266,7 @@ class ObjectGraphDataset(Dataset):
             src_obj_ids_ = nodes_in_camera["object_id"].values
             dst_obj_ids_ = nodes_not_in_camera["object_id"].values
 
+            # See description of repeat and tile in docstring above
             src_node_ids = np.repeat(src_node_ids_, len(dst_node_ids_))
             dst_node_ids = np.tile(dst_node_ids_, len(src_node_ids_))
             src_obj_ids = np.repeat(src_obj_ids_, len(dst_obj_ids_))
@@ -281,21 +287,21 @@ class ObjectGraphDataset(Dataset):
             # Save visited cameras so we only get pairs of edges only once (Edge (1, 2) is equal to Edge (2,1))
             cameras_visited.append(camera)
 
-            #print(f"Processed edges for camera {camera}. Shapes: ", 
-            #      len(src_obj_ids), len(dst_obj_ids), len(src_node_ids), len(dst_node_ids))
+        edge_idx = np.array(edge_idx, dtype=np.int64)
+        edge_labels = np.array(edge_labels, dtype=bool)
 
-        edge_idx = torch.tensor(np.array(edge_idx), dtype=torch.int64, device=self.device)
-        edge_labels = torch.tensor(np.array(edge_labels), dtype=torch.int64, device=self.device)
+        if self.negative_sampling:
+            edge_df, edge_idx, edge_labels = simple_negative_sampling(edge_df, edge_idx, edge_labels, self.num_neg_samples)
+        
+        # Convert edge indices and labels to torch tensors and compute embeddings
+        # For edge_idx we take transpose as the GNN needs edges with shape (2, num_edges)
+        edge_idx = torch.tensor(np.array(edge_idx), dtype=torch.int64, device=self.device).T
+        edge_labels = torch.tensor(np.array(edge_labels), dtype=torch.int64, device=self.device)   
         edge_embeddings = self.compute_edge_embeddings(node_embeddings, edge_idx)
 
-        # Sanity checks
-        check_nans_df(edge_df, "edge_df")
-        check_nans_tensor(edge_idx, "edge_idx")
-        check_nans_tensor(edge_labels, "edge_labels")
-        check_nans_tensor(edge_embeddings, "edge_embeddings")
-
         return edge_df, edge_idx, edge_embeddings, edge_labels
-
+    
+    
     def len(self):
         """Determine the number of available steps in this dataset"""
         return self.num_available_iterations
@@ -350,7 +356,7 @@ class ObjectGraphDataset(Dataset):
         print("Creating PyG graph")
         # Generate a PyG Data object (the graph)
         graph = Data(x=node_embeddings, 
-                     edge_index=edge_idx.T, 
+                     edge_index=edge_idx, 
                      y=node_labels, 
                      edge_attr=edge_embeddings, 
                      edge_labels=edge_labels)
