@@ -3,6 +3,7 @@ import os
 import sys
 import os.path as osp
 sys.path.insert(1, osp.abspath('.'))
+import yaml
 import pandas as pd
 import numpy as np
 from modules.inference.postprocessing import load_roi
@@ -325,15 +326,18 @@ class VideoGridPlayer(VideoPlayer):
             cap.release()
         cv2.destroyAllWindows()
 
-
 if __name__ == "__main__":
 
-    frames_dir = 'datasets/AIC20/videos/S02'
-    bbox_dir = 'datasets/AIC20/annotations/S02'
-    roi_dir = 'datasets/AIC20/roi/S02'
-    annotations_filename = 'gt.txt'
-    video_filename = 'vdo.avi'
-    mode = 'grid'
+    # Loading configuration for the video player
+    with open("config/video_player.yml", "r") as config_file:
+        config = yaml.safe_load(config_file)
+
+    frames_dir = config['frames_dir']
+    bbox_dir = config['bbox_dir']
+    roi_dir = config['roi_dir']
+    annotations_filename = config['annotations_filename'] #'gt.txt'
+    video_filename = config['video_filename']
+    mode = config['mode']
 
     if mode == 'single':
         player = VideoPlayer(frames_dir, 

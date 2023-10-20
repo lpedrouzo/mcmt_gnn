@@ -1,0 +1,6 @@
+frames_dir: 'datasets/AIC20/videos/S02'
+bbox_dir: 'datasets/AIC20/annotations/S02'
+roi_dir: 'datasets/AIC20/roi/S02' # None if mode single
+annotations_filename: 'mtsc_deepsort_ssd512.txt' #'gt.txt'
+video_filename: 'vdo.avi'
+mode: 'grid' # 'single'
