@@ -64,6 +64,10 @@ if __name__ == "__main__":
         transforms.RandomPerspective(distortion_scale=0.25)
     ])
 
+    if training_config['debug_run']:
+        ids = np.random.choice(train_df.id.unique(), 5)
+        train_df = train_df[train_df.id.isin(ids)]
+
     # Instantiating the Graph dataset using the detections of data_df 
     train_dataset = ObjectGraphDataset(train_df, 
                                        sequence_path_prefix=dataset_config['sequence_path_prefix'], 
@@ -75,7 +79,9 @@ if __name__ == "__main__":
                                        resized_img_shape=dataset_config['resized_img_shape'], 
                                        orignal_img_shape=dataset_config['original_img_shape'], 
                                        augmentation=augmentation,
-                                       return_dataframes=False)
+                                       return_dataframes=False,
+                                       negative_sampling=dataset_config['negative_sampling'],
+                                       transform=T.ToUndirected())
     
     # Consolidating annotations from all cameras in S02 into a single dataframe
     test_df = AnnotationsProcessor(
@@ -83,7 +89,12 @@ if __name__ == "__main__":
             annotations_filename=dataset_config['annotations_filename']
         ).consolidate_annotations(dataset_config['sequences_val'])
 
+    if training_config['debug_run']:
+        ids = np.random.choice(test_df.id.unique(), 5)
+        test_df = test_df[test_df.id.isin(ids)]
+
     # Instantiating the Graph dataset using the detections of data_df 
+    # Test dataset has NO augmentation and NO sampling. All objects loaded at once
     val_dataset = ObjectGraphDataset(test_df, 
                                       sequence_path_prefix=dataset_config['sequence_path_prefix'], 
                                       sequence_names=dataset_config['sequences_val'], 
@@ -94,7 +105,8 @@ if __name__ == "__main__":
                                       resized_img_shape=dataset_config['resized_img_shape'], 
                                       orignal_img_shape=dataset_config['original_img_shape'], 
                                       augmentation=None, # No augmentation for validation of course
-                                      return_dataframes=False) 
+                                      return_dataframes=False,
+                                      transform=T.ToUndirected()) 
     print("Success Defining torch datasets.")
 
     train_dataloader = DataLoader(train_dataset, 
@@ -176,4 +188,4 @@ if __name__ == "__main__":
             training_engine.load_train_state()
 
     # Run or resume training
-    training_engine.run_training(max_epochs=training_config["epochs"])
+    training_engine.run_training(max_epochs=1 if training_config['debug_run'] else training_config["epochs"])

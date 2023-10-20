@@ -1,5 +1,6 @@
 # Configuration parameters for training (loss, optimizer, lr, datasets)
 training_config:
+  debug_run: false # IMPORTANT set to false for real training
   checkpoint_path_prefix: 'results'
   load_previous_train_state: true
   epochs: 100
@@ -13,11 +14,12 @@ training_config:
       - 'S02'
     annotations_filename: 'gt.txt'
     num_ids_per_graph: 64
-    embeddings_per_iteration: 48
+    embeddings_per_iteration: 512
     resized_img_shape: [224, 224]
     original_img_shape: [1920, 1080]
     train_batch_size: 1
     test_batch_size: 1
+    negative_sampling: false # Negative sampling to balance training
   loss:
     loss_type: 'ce_custom' # 'ce' - 'focal' - 'bce'
     alpha: [0.25, 0.75]
