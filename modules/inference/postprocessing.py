@@ -281,23 +281,37 @@ def postprocessing(num_cameras,
     whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction, directed_graph)
     
     # Pruning edges that violates num_camera contraints
-    predictions_r = pruning(data, whole_edges_prediction.view(-1), preds_prob[:,1], pred_active_edges, num_cameras)
+    predictions_r = pruning(data, 
+                            whole_edges_prediction.view(-1), 
+                            preds_prob[:,1], 
+                            pred_active_edges, 
+                            num_cameras, directed_graph)
 
     if len(predictions_r):
         whole_edges_prediction = predictions_r
     
     # Get set of predicted active edges that go both ways (no single direction)
-    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction, directed_graph)
+    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, 
+                                                                 whole_edges_prediction, 
+                                                                 directed_graph)
     
     # Get clusters of active edges. Each cluster represents an object id
     G = nx.DiGraph(pred_active_edges)
     id_pred, _ = connected_componnets(G, data.num_nodes, directed_graph)
 
     # Perform splitting for conencted components that present bridges
-    whole_edges_prediction = split_clusters(G, id_pred, whole_edges_prediction, preds_prob[:,1], num_cameras, data.num_nodes)
+    whole_edges_prediction = split_clusters(G, 
+                                            id_pred, 
+                                            whole_edges_prediction, 
+                                            preds_prob[:,1], 
+                                            num_cameras, 
+                                            data.num_nodes, 
+                                            directed_graph)
 
     # Get initial set of predicted active edges
-    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction, directed_graph)
+    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, 
+                                                                 whole_edges_prediction, 
+                                                                 directed_graph)
     
     # Get clusters of active edges. Each cluster represents an object id
     G = nx.DiGraph(pred_active_edges)

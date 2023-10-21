@@ -27,7 +27,7 @@ reid_model = resnet101_ibn_a(model_path=path_config['reid_model_path'], device=d
 
 # Consolidating annotations from all cameras in S02 into a single dataframe
 data_df = AnnotationsProcessor(sequence_path=path_config['sequence_path'],
-                               annotations_filename=dataset_config['annotations_filename']).consolidate_annotations([config['evaluation_sequence']])
+                               annotations_filename=dataset_config['annotations_filename']).consolidate_annotations([dataset_config['evaluation_sequence']])
 
 # Instantiating the Graph dataset using the detections of data_df 
 dataset = ObjectGraphDataset(data_df, 
