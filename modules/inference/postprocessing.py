@@ -109,7 +109,7 @@ def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes, 
             remaining_active_edges = [
                 (edge[0], edge[1]) for edge in G.edges()
             ]
-            G = nx.DiGraph(remaining_active_edges)
+            G = nx.DiGraph(remaining_active_edges) if directed_graph else nx.Graph(remaining_active_edges)
 
             # Recursively split clusters
             ID_pred, _ = connected_componnets(G, num_nodes, directed_graph)
@@ -296,7 +296,7 @@ def postprocessing(num_cameras,
                                                                  directed_graph)
     
     # Get clusters of active edges. Each cluster represents an object id
-    G = nx.DiGraph(pred_active_edges)
+    G = nx.DiGraph(pred_active_edges) if directed_graph else nx.Graph(pred_active_edges)
     id_pred, _ = connected_componnets(G, data.num_nodes, directed_graph)
 
     # Perform splitting for conencted components that present bridges
@@ -314,7 +314,7 @@ def postprocessing(num_cameras,
                                                                  directed_graph)
     
     # Get clusters of active edges. Each cluster represents an object id
-    G = nx.DiGraph(pred_active_edges)
+    G = nx.DiGraph(pred_active_edges) if directed_graph else nx.Graph(pred_active_edges)
     id_pred, _ = connected_componnets(G, data.num_nodes, directed_graph)
 
     return id_pred, torch.tensor(whole_edges_prediction)
