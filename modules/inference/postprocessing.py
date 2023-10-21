@@ -14,7 +14,7 @@ def intersect(tensor1, tensor2):
     return aux[:-1][(aux[1:] == aux[:-1]).data]
 
 
-def connected_componnets(G, n_nodes):
+def connected_componnets(G, n_nodes, directed_graph=True):
     """ Computes Strongly Connected Components (SCC) and assigns cluster IDs to nodes in a directed graph.
 
     Parameters
@@ -32,8 +32,11 @@ def connected_componnets(G, n_nodes):
         The number of connected components in the graph.
     """
 
-    # Compute strongly connected components
-    scc_sets = [c for c in sorted(nx.strongly_connected_components(G), key=len, reverse=False)]
+    # Compute connected components
+    if directed_graph:
+        scc_sets = [c for c in sorted(nx.strongly_connected_components(G), key=len, reverse=False)]
+    else:
+        scc_sets = [c for c in sorted(nx.connected_components(G), key=len, reverse=False)]
 
     # Initialize a list of connected components
     all_sets = list(scc_sets)
@@ -60,7 +63,7 @@ def connected_componnets(G, n_nodes):
     return id_pred, n_components_pred
 
 
-def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes):
+def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes, directed_graph=True):
     """ Split clusters of nodes in a graph based on a specified condition.
 
     Parameters
@@ -109,19 +112,19 @@ def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes):
             G = nx.DiGraph(remaining_active_edges)
 
             # Recursively split clusters
-            ID_pred, _ = connected_componnets(G, num_nodes)
+            ID_pred, _ = connected_componnets(G, num_nodes, directed_graph)
     
     return predictions
 
 
-def pruning(data, edges_out, probs, predicted_active_edges,num_cameras):
+def pruning(data, edges_out, probs, predicted_active_edges, num_cameras, directed_graph):
     """ Determines the proportion of Flow Conservation inequalities that are satisfied.
     For each node, the sum of incoming (resp. outgoing) edge values must be less or equal than 1.
 
     Args:
         data: 'Graph' object
         edges_out: BINARIZED output values for edges (1 if active, 0 if not active)
-        undirected_edges: determines whether each edge in data.edge_index appears in both directions (i.e. (i, j)
+        directed_graph: determines whether each edge in data.edge_index appears in both directions (i.e. (i, j)
         and (j, i) are both present (undirected_edges =True), or only (i, j), with  i<j (undirected_edges=False)
         return_flow_vals: determines whether the sum of incoming /outglong flow for each node must be returned
 
@@ -130,9 +133,8 @@ def pruning(data, edges_out, probs, predicted_active_edges,num_cameras):
 
     """
     # Get tensors indicataing which nodes have incoming and outgoing flows (e.g. nodes in first frame have no in. flow)
-    undirected_edges = False
     edge_ixs = data.edge_index
-    if undirected_edges:
+    if not directed_graph:
         sorted, _ = edge_ixs.t().sort(dim = 1)
         sorted = sorted.t()
         div_factor = 2. 
@@ -234,7 +236,7 @@ def remove_edges_single_direction(active_edges, predictions, edge_list):
     return new_predictions, new_predicted_active_edges
 
 
-def get_bidirectional_active_edges(edge_list, whole_edges_prediction):
+def get_active_edges(edge_list, whole_edges_prediction, directed_graph=True):
     """ Get form the whole set of edges, the ones that are predicted 
     as active by the Graph Neural Network and deactivates the predicted active edges
     that are not bidirectional, since the graph should be undirected.
@@ -259,10 +261,10 @@ def get_bidirectional_active_edges(edge_list, whole_edges_prediction):
     pred_active_edges = [(edge_list[0][pos], edge_list[1][pos]) 
                                for pos, p in enumerate(whole_edges_prediction) if p == 1]
     
-    # Remove edges that do not go both ways
-    whole_edges_prediction, pred_active_edges = remove_edges_single_direction(pred_active_edges,
-                                                                              whole_edges_prediction, 
-                                                                              edge_list)
+    if directed_graph:
+        whole_edges_prediction, pred_active_edges = remove_edges_single_direction(pred_active_edges,
+                                                                                whole_edges_prediction, 
+                                                                                edge_list)
     
     return whole_edges_prediction, pred_active_edges
 
@@ -271,11 +273,12 @@ def postprocessing(num_cameras,
                    preds_prob, 
                    whole_edges_prediction, 
                    edge_list, 
-                   data):
+                   data,
+                   directed_graph=True):
     """ Perform postprocessing procedure on the set of edge predictions.
     The procedures follow (pruning -> connected_components -> splitting -> connected components)
     """
-    whole_edges_prediction, pred_active_edges = get_bidirectional_active_edges(edge_list, whole_edges_prediction)
+    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction, directed_graph)
     
     # Pruning edges that violates num_camera contraints
     predictions_r = pruning(data, whole_edges_prediction.view(-1), preds_prob[:,1], pred_active_edges, num_cameras)
@@ -284,21 +287,21 @@ def postprocessing(num_cameras,
         whole_edges_prediction = predictions_r
     
     # Get set of predicted active edges that go both ways (no single direction)
-    whole_edges_prediction, pred_active_edges = get_bidirectional_active_edges(edge_list, whole_edges_prediction)
+    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction, directed_graph)
     
     # Get clusters of active edges. Each cluster represents an object id
     G = nx.DiGraph(pred_active_edges)
-    id_pred, _ = connected_componnets(G, data.num_nodes)
+    id_pred, _ = connected_componnets(G, data.num_nodes, directed_graph)
 
     # Perform splitting for conencted components that present bridges
     whole_edges_prediction = split_clusters(G, id_pred, whole_edges_prediction, preds_prob[:,1], num_cameras, data.num_nodes)
 
     # Get initial set of predicted active edges
-    whole_edges_prediction, pred_active_edges = get_bidirectional_active_edges(edge_list, whole_edges_prediction)
+    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction, directed_graph)
     
     # Get clusters of active edges. Each cluster represents an object id
     G = nx.DiGraph(pred_active_edges)
-    id_pred, _ = connected_componnets(G, data.num_nodes)
+    id_pred, _ = connected_componnets(G, data.num_nodes, directed_graph)
 
     return id_pred, torch.tensor(whole_edges_prediction)
 

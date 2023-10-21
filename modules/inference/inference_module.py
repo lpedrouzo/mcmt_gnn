@@ -27,13 +27,14 @@ class InferenceModule(nn.Module):
                                  "/mcmt_gnn/datasets/AIC20")
     inf_module.predict_tracks((graph, node_df, edge_df))
     """
-    def __init__(self, model, data_df, sequence_path):
+    def __init__(self, model, data_df, sequence_path, directed_graph=True):
         super().__init__()
         self.model = model
         self.model.eval()
         self.data_df = data_df
         self.num_cameras = len(data_df.camera.unique())
         self.sequence_path = sequence_path
+        self.directed_graph = directed_graph
 
     def forward(self, data):
         """ Generate estimations of graph connectivity
@@ -58,8 +59,8 @@ class InferenceModule(nn.Module):
             # Output predictions from GNN            
             output_dict, _ = self.model(data)
             logits = torch.cat(output_dict['classified_edges'], dim=0)
-            preds_prob = F.softmax(logits, dim=1)
-            predictions = torch.argmax(preds_prob, dim=1)
+            preds_prob = F.softmax(logits, dim=1).cpu()
+            predictions = torch.argmax(preds_prob, dim=1).cpu()
 
             edge_list = data.edge_index.cpu().numpy()
 
@@ -68,7 +69,8 @@ class InferenceModule(nn.Module):
                                                   preds_prob,
                                                   predictions,
                                                   edge_list,
-                                                  data)
+                                                  data.cpu(),
+                                                  self.directed_graph)
         return id_pred, predictions
     
     def predict_tracks(self, batch, 
