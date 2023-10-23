@@ -6,12 +6,8 @@ import os.path as osp
 import cv2
 import pandas as pd
 from torch_scatter import scatter_add
+from .utils import intersect, torch_isin
 
-
-def intersect(tensor1, tensor2):
-    aux = torch.cat((tensor1, tensor2),dim=0)
-    aux = aux.sort()[0]
-    return aux[:-1][(aux[1:] == aux[:-1]).data]
 
 
 def connected_componnets(G, n_nodes, directed_graph=True):
@@ -92,10 +88,16 @@ def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes, 
     for cluster_id in clusters_to_disjoint:
         # Find nodes in the cluster
         nodes_to_disjoint = torch.where(ID_pred == cluster_id)[0]
-
+        
+        # Accounting for compatibility between torch 1.7 and 2.1
+        if hasattr(torch, 'isin') and callable(getattr(torch, 'isin')):
+            bool_edges = torch.isin(torch.tensor(list(G.edges())), nodes_to_disjoint)
+        else:
+            bool_edges = torch_isin(torch.tensor(list(G.edges())), nodes_to_disjoint)
+            
         # Find active edges involving nodes in the cluster
         active_edges_to_disjoint = torch.nonzero(
-            torch.any(torch.isin(torch.tensor(list(G.edges())), nodes_to_disjoint), dim=1)
+            torch.any(bool_edges, dim=1)
         ).flatten()
 
         if len(active_edges_to_disjoint) > 0:
