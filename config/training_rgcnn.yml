@@ -51,15 +51,16 @@ gnn_arch:
       edge_out_dim: 4 
 
     nodes:
-      node_in_dim: 2048
-      node_fc_dims: [1024,512, 128]
-      node_out_dim: 32
-      dropout_p: 0.1
-      use_batchnorm: True
+      resnet101:
+        node_in_dim: 2048
+        node_fc_dims: [1024,512, 128]
+        node_out_dim: 32
+        dropout_p: 0.1
+        use_batchnorm: True
 
   # MPN edge update
   edge_model_feats_dict:
-    fc_dims: [4, 4] 
+    fc_dims: [4] 
     dropout_p: 0.1
     use_batchnorm: True
 

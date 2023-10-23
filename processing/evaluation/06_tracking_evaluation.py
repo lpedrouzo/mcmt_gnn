@@ -8,7 +8,7 @@ import torch_geometric.transforms as T
 from modules.torch_dataset.object_graph_dataset import ObjectGraphDataset
 from modules.data_processor.annotations_processor import AnnotationsProcessor
 from models.reid.resnet import resnet101_ibn_a
-from models.mcmt.rgnn import MOTMPNet
+from tests.mpn import MOTMPNet #from models.mcmt.rgnn import MOTMPNet
 from modules.inference.inference_module import InferenceModule
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -47,8 +47,8 @@ graph, node_df, edge_df, sampled_df = dataset[0]
 
 # Loading the trained GNN model 
 model_state = torch.load(path_config['gnn_model_checkpoint'])
-model = MOTMPNet(gnn_arch).to(device)
-model.load_state_dict(model_state['model'])
+model = MOTMPNet(gnn_arch, None, "resnet101").to(device)
+model.load_state_dict(model_state['model_state_dict'])
 
 img_width, img_height = dataset_config['original_img_shape']
 
