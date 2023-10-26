@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from time import time
 from tqdm import tqdm
 from functools import partial
-from tqdm import tqdm
+
 class EmbeddingsProcessor(object):
 
     def __init__(self, 
