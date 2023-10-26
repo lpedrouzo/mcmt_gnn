@@ -25,6 +25,7 @@ training_config:
     alpha: [0.25, 0.75]
     gamma: 2
   lr_scheduler:
+    toggle: off
     scheduler_type: 'step' 
     step_size: 50
     gamma: 0.1
@@ -51,12 +52,11 @@ gnn_arch:
       edge_out_dim: 4 
 
     nodes:
-      resnet101:
-        node_in_dim: 2048
-        node_fc_dims: [1024,512, 128]
-        node_out_dim: 32
-        dropout_p: 0.1
-        use_batchnorm: True
+      node_in_dim: 2048
+      node_fc_dims: [1024,512, 128]
+      node_out_dim: 32
+      dropout_p: 0.1
+      use_batchnorm: True
 
   # MPN edge update
   edge_model_feats_dict:

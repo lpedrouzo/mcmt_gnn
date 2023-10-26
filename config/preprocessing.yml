@@ -30,5 +30,5 @@ common_params:
   in_sc_preds_filename:  mtsc_deepsort_ssd512.txt
   out_sc_preds_filename: 'mtsc_deepsort_ssd512_filtered.txt'
   min_bb_area : 750
-  filter_frame_bounds: true
+  filter_frame_bounds: True
   filter_roi: true
