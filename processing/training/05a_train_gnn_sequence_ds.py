@@ -81,7 +81,7 @@ if __name__ == "__main__":
                                        augmentation=augmentation,
                                        return_dataframes=False,
                                        negative_sampling=dataset_config['negative_sampling'],
-                                       transform=T.ToUndirected())
+                                       graph_transform=T.ToUndirected())
     
     # Consolidating annotations from all cameras in S02 into a single dataframe
     test_df = AnnotationsProcessor(
@@ -156,18 +156,21 @@ if __name__ == "__main__":
 
 
     # 5 - Learning rate decay scheduler
-    if lr_scheduler_config["scheduler_type"] == 'step':
-        lr_scheduler = StepLR(optimizer, 
-                            lr_scheduler_config["step_size"], 
-                            lr_scheduler_config["gamma"])
-        
-    elif lr_scheduler_config["scheduler_type"] == 'cosine':
-        lr_scheduler = CosineAnnealingLR(optimizer,
-                                        T_max=lr_scheduler_config["tmax"])
+    if lr_scheduler_config['toggle']:
+        if lr_scheduler_config["scheduler_type"] == 'step':
+            lr_scheduler = StepLR(optimizer, 
+                                lr_scheduler_config["step_size"], 
+                                lr_scheduler_config["gamma"])
+            
+        elif lr_scheduler_config["scheduler_type"] == 'cosine':
+            lr_scheduler = CosineAnnealingLR(optimizer,
+                                            T_max=lr_scheduler_config["tmax"])
+        else:
+            raise Exception(f'Learning rate scheduler {lr_scheduler_config["scheduler_type"]} is not supported.')
+        print(f"Success creating learning rate scheduler: {lr_scheduler_config['scheduler_type']}")
     else:
-        raise Exception(f'Learning rate scheduler {lr_scheduler_config["scheduler_type"]} is not supported.')
-    print(f"Success creating learning rate scheduler: {lr_scheduler_config['scheduler_type']}")
-
+        lr_scheduler = None
+        
     # 6 - Definition  of training engine using our custom object
     training_engine = TrainingEngine(train_dataloader, val_dataloader, gnn, training_config["checkpoint_path_prefix"], device)
     training_engine.setup_engine(
