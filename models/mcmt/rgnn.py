@@ -17,11 +17,11 @@ if torch.cuda.is_available():
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
+
 class MetaLayer(torch.nn.Module):
     """
-    Note: The implementation of this MPN is not original from this repo.
-    Extracted from [mot_neural_solver](https://github.com/dvl-tum/mot_neural_solver/blob/master/src/mot_neural_solver/models/mpn.py)
-    with some minor modifications.
+    Core Message Passing Network Class. Extracted from torch_geometric, with minor modifications.
+    (https://rusty1s.github.io/pytorch_geometric/build/html/modules/nn.html)
     """
     def __init__(self, edge_model=None, node_model=None):
         """
@@ -115,14 +115,14 @@ class MLPGraphIndependent(nn.Module):
         super(MLPGraphIndependent, self).__init__()
 
         if node_in_dim is not None :
-            self.node_mlp = MLP(input_dim=node_in_dim, fc_dims=list(node_fc_dims), output_dim=node_out_dim,
-                                dropout_p=dropout_p, use_batchnorm=use_batchnorm)
+            self.node_mlp = MLP(input_dim=node_in_dim, fc_dims=list(node_fc_dims) + [node_out_dim],
+                                dropout_p=dropout_p, use_batchnorm=use_batchnorm, is_classifier=is_classifier)
         else:
             self.node_mlp = None
 
         if edge_in_dim is not None :
-            self.edge_mlp = MLP(input_dim=edge_in_dim, fc_dims=list(edge_fc_dims), output_dim=edge_out_dim,
-                                dropout_p=dropout_p, use_batchnorm=use_batchnorm)
+            self.edge_mlp = MLP(input_dim=edge_in_dim, fc_dims=list(edge_fc_dims) + [edge_out_dim],
+                                dropout_p=dropout_p, use_batchnorm=use_batchnorm,is_classifier=is_classifier)
         else:
             self.edge_mlp = None
 
@@ -155,6 +155,7 @@ class MOTMPNet(nn.Module):
         """
         Defines all components of the model
         Args:
+            bb_encoder: (might be 'None') CNN used to encode bounding box apperance information.
             model_params: dictionary contaning all model hyperparameters
         """
         super(MOTMPNet, self).__init__()
@@ -185,6 +186,7 @@ class MOTMPNet(nn.Module):
             model_params: dictionary contaning all model hyperparameters
             encoder_feats_dict: dictionary containing the hyperparameters for the initial node/edge encoder
         """
+
         # Define an aggregation operator for nodes to 'gather' messages from incident edges
         node_agg_fn = model_params['node_agg_fn']
         assert node_agg_fn.lower() in ('mean', 'max', 'sum'), "node_agg_fn can only be 'max', 'mean' or 'sum'."
@@ -221,12 +223,9 @@ class MOTMPNet(nn.Module):
                        use_batchnorm=edge_model_feats_dict['use_batchnorm'])
 
         node_mlp = MLP(input_dim=node_model_in_dim,
-                        fc_dims=node_model_feats_dict['fc_dims'],
-                        dropout_p=node_model_feats_dict['dropout_p'],
-                        use_batchnorm=node_model_feats_dict['use_batchnorm'])
-
-        node_mlp_old = nn.Sequential(*[nn.Linear(2 * encoder_feats_dict['node_out_dim'], encoder_feats_dict['node_out_dim']),
-                                   nn.ReLU(inplace=True)])
+                           fc_dims=node_model_feats_dict['fc_dims'],
+                           dropout_p=node_model_feats_dict['dropout_p'],
+                           use_batchnorm=node_model_feats_dict['use_batchnorm'])
 
         # Define all MLPs used within the MPN
         return MetaLayer(edge_model=EdgeModel(edge_mlp = edge_mlp),
@@ -243,7 +242,7 @@ class MOTMPNet(nn.Module):
         Args:
             data: object containing attribues
               - x: node features matrix
-              - edge_index: tensor with shape [M, 2], with M being the number of edges, indicating nonzero entries in the
+              - edge_index: tensor with shape [2, M], with M being the number of edges, indicating nonzero entries in the
                 graph adjacency (i.e. edges) (i.e. sparse adjacency)
               - edge_attr: edge features matrix (sorted by edge apperance in edge_index)
 
@@ -251,13 +250,11 @@ class MOTMPNet(nn.Module):
             classified_edges: list of unnormalized node probabilites after each MP step
         """
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
-        print(edge_index.shape)
 
         # As I only have 1 value in the edge features, i dont encode it. encoder inside = E_v y E_e
         latent_edge_feats, latent_node_feats = self.encoder(edge_attr, x)
         initial_edge_feats = latent_edge_feats
         initial_node_feats = latent_node_feats
-
 
         # During training, the feature vectors that the MPNetwork outputs for the  last self.num_class_steps message
         # passing steps are classified in order to compute the loss.

@@ -3,8 +3,8 @@ from torch import nn
 
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, fc_dims, output_dim=None, dropout_p=0.4, use_batchnorm=False):
-        """Multi-Layer Perceptron (MLP) neural network module.
+    def __init__(self, input_dim, fc_dims, dropout_p=0.4, use_batchnorm=False, is_classifier=False):
+        """ Multi-Layer Perceptron (MLP) neural network module.
 
         Parameters
         ===========
@@ -25,32 +25,33 @@ class MLP(nn.Module):
         mlp : nn.Sequential
             Sequential container for MLP layers.
         """
-        super().__init__()
+        super(MLP, self).__init__()
 
-        assert isinstance(fc_dims, (list, tuple)), \
-            f'fc_dims must be either a list or a tuple, but got {type(fc_dims)}'
-        
-        self.mlp = nn.Sequential()
-        dims = [input_dim] + fc_dims 
+        assert isinstance(fc_dims, (list, tuple)), 'fc_dims must be either a list or a tuple, but got {}'.format(
+            type(fc_dims))
 
-        # Set up input and hidden layers
-        for i in range(len(dims)-1):
-            self.mlp.add_module(f'layer_{i}', nn.Linear(dims[i], dims[i+1]))
+        layers = []
+        if not(is_classifier):
+            for dim in fc_dims:
+                layers.append(nn.Linear(input_dim, dim))
+                if use_batchnorm and dim != 1:
+                    layers.append(nn.BatchNorm1d(dim,track_running_stats=False))
 
-            if use_batchnorm:
-                self.mlp.add_module(f'bn_{i}', nn.BatchNorm1d(dims[i+1],track_running_stats=False))
+                if dim != 1:
+                    layers.append(nn.ReLU(inplace=True))
 
-            self.mlp.add_module(f'act_{i}', nn.ReLU(inplace=True))
+                if dropout_p is not None and dim != 1:
+                    layers.append(nn.Dropout(p=dropout_p))
 
-            if dropout_p is not None:
-                self.mlp.add_module(f'dropout_{i}', nn.Dropout(p=dropout_p))
-        
-        # Set classification layer if applicable
-        if output_dim is not None:
-            self.mlp.add_module(f'output', nn.Linear(dims[-1], output_dim))
+                input_dim = dim
+        else:
+            for dim in fc_dims:
+                layers.append(nn.Linear(input_dim, dim))
+
+        self.fc_layers = nn.Sequential(*layers)
 
     def forward(self, input):
-        """Forward pass of the MLP.
+        """ Forward pass of the MLP.
 
         Parameters
         ===========
@@ -62,4 +63,5 @@ class MLP(nn.Module):
         Tensor
             Output of the MLP.
         """
-        return self.mlp(input)
+        return self.fc_layers(input)
+    
