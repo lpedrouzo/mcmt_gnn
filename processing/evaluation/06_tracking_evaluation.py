@@ -28,7 +28,7 @@ if __name__ == '__main__':
 
     # Consolidating annotations from all cameras in S02 into a single dataframe
     data_df = AnnotationsProcessor(sequence_path=path_config['sequence_path'],
-                                annotations_filename=dataset_config['annotations_filename']).consolidate_annotations([dataset_config['evaluation_sequence']])
+                                annotations_filename=dataset_config['annotations_filename']).consolidate_annotations([dataset_config['evaluation_sequence']], ["frame", "camera"])
 
     # Instantiating the Graph dataset using the detections of data_df 
     dataset = ObjectGraphDataset(data_df, 
@@ -54,7 +54,12 @@ if __name__ == '__main__':
     img_width, img_height = dataset_config['original_img_shape']
 
     # Loading the inference module for prediction of track and evaluation
-    inf_module = InferenceModule(model, sampled_df, path_config['sequence_path'], config['directed_graph'])
+    inf_module = InferenceModule(model, 
+                                 sampled_df, 
+                                 path_config['sequence_path'], 
+                                 config['directed_graph'], 
+                                 config["remove_unidirectional_edges"])
+    
     _ = inf_module.predict_tracks((graph, node_df, edge_df), img_width, img_height)
 
     # We need to preprocess the cameras because the ground truth has cameras as ints and not as strings

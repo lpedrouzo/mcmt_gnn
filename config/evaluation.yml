@@ -1,11 +1,11 @@
 06_tracking_evaluation:
-  directed_graph: false
+  directed_graph: true 
+  remove_unidirectional: false
   dataset_config:
     annotations_filename: 'gt.txt'
     evaluation_sequence: 'S02'
     embeddings_per_iteration: 256
     resized_img_shape: [224, 224]
-    original_img_shape: [1920, 1080]
   motmetrics_config:
     th: 0.7
   paths:

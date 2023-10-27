@@ -23,7 +23,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Set a global random seed for CPU
 torch.manual_seed(11)
-np.random.seed(42)
+np.random.seed(11)
 
 # Set a global random seed for CUDA (GPU) if available
 if torch.cuda.is_available():
@@ -71,13 +71,10 @@ if __name__ == "__main__":
     # Instantiating the Graph dataset using the detections of data_df 
     train_dataset = ObjectGraphDataset(train_df, 
                                        sequence_path_prefix=dataset_config['sequence_path_prefix'], 
-                                       sequence_names=dataset_config['sequences_train'], 
-                                       annotations_filename=dataset_config['annotations_filename'], 
                                        reid_model=reid_model,
                                        num_ids_per_graph=dataset_config['num_ids_per_graph'], 
                                        embeddings_per_it=dataset_config['embeddings_per_iteration'], 
                                        resized_img_shape=dataset_config['resized_img_shape'], 
-                                       orignal_img_shape=dataset_config['original_img_shape'], 
                                        augmentation=augmentation,
                                        return_dataframes=False,
                                        negative_sampling=dataset_config['negative_sampling'],
@@ -97,13 +94,10 @@ if __name__ == "__main__":
     # Test dataset has NO augmentation and NO sampling. All objects loaded at once
     val_dataset = ObjectGraphDataset(test_df, 
                                       sequence_path_prefix=dataset_config['sequence_path_prefix'], 
-                                      sequence_names=dataset_config['sequences_val'], 
-                                      annotations_filename=dataset_config['annotations_filename'], 
                                       reid_model=reid_model,
                                       num_ids_per_graph=-1, # -1 means load all ids
                                       embeddings_per_it=dataset_config['embeddings_per_iteration'], 
                                       resized_img_shape=dataset_config['resized_img_shape'], 
-                                      orignal_img_shape=dataset_config['original_img_shape'], 
                                       augmentation=None, # No augmentation for validation of course
                                       return_dataframes=False,
                                       transform=T.ToUndirected()) 
