@@ -13,8 +13,6 @@ class BoundingBoxDataset(Dataset):
     the image patch corresponding to the detection's bounding box coordinates
     """
     def __init__(self, det_df:pd.DataFrame, 
-                 frame_height:int, 
-                 frame_width:int, 
                  frame_dir:str,
                  fully_qualified_dir=True,
                  output_size:tuple = (128, 64),
@@ -24,8 +22,6 @@ class BoundingBoxDataset(Dataset):
         
         # Initialization of constructor variables
         self.det_df = det_df
-        self.frame_width = frame_width
-        self.frame_height = frame_height
         self.frame_dir = frame_dir
         self.fully_qualified_dir = fully_qualified_dir
         
