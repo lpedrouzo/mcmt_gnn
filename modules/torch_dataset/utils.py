@@ -143,7 +143,7 @@ def stratified_negative_sampling(edge_df, edge_idx, edge_labels):
     return edge_df, edge_idx, edge_labels
 
 
-def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular'):
+def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular', undirected=True):
     """ Visualize a PyTorch Geometric graph using NetworkX and Matplotlib.
     This function creates a visual representation of the input graph using NetworkX and Matplotlib. It supports
     optional filtering of edges based on their labels and node coloring based on node classes.
@@ -176,7 +176,7 @@ def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular'):
         edges_ind = edges_ind[np.isin(el,class_ids)]
         el = el[np.isin(el, class_ids)]
 
-    G = to_networkx(data)
+    G = to_networkx(data, to_undirected=undirected)
 
     # Define colormap
     cmap=plt.cm.viridis(np.linspace(0,1,G.number_of_edges()))
@@ -190,7 +190,7 @@ def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular'):
     # Draw nodes
     nx.draw_networkx_nodes(G, pos, 
                            node_color=data.y.tolist() if color_nodes else None, 
-                           cmap=plt.cm.tab20)
+                           cmap=plt.cm.gist_ncar)
     nx.draw_networkx_labels(G, pos)
 
     # Draw edges
