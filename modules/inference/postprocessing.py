@@ -9,7 +9,6 @@ from torch_scatter import scatter_add
 from .utils import intersect, torch_isin
 
 
-
 def connected_componnets(G, n_nodes, directed_graph=True):
     """ Computes Strongly Connected Components (SCC) and assigns cluster IDs to nodes in a directed graph.
 
@@ -59,63 +58,82 @@ def connected_componnets(G, n_nodes, directed_graph=True):
     return id_pred, n_components_pred
 
 
-def split_clusters(G, ID_pred, predictions, preds_prob, num_cameras, num_nodes, directed_graph=True):
-    """ Split clusters of nodes in a graph based on a specified condition.
+def splitting(ID_pred, predictions, preds_prob, edge_list, num_nodes, predicted_act_edges, num_cameras, directed_graph):
+    """ This function performs edge disjointing in a graph based on specified criteria.
+    The criteria include identifying labels with more than 'num_cameras' elements and
+    removing edges based on certain conditions such as minimum probability.
+    The graph can be directed or undirected based on the 'directed_graph' parameter.
 
+    The function may be called recursively for further edge disjointing.
+    
     Parameters
-    ==========
-    G : networkx.DiGraph
-        An updated directed graph.
+    ----------
     ID_pred : torch.Tensor
-        A tensor containing cluster IDs for nodes.
+        A tensor containing labels associated with nodes in the graph.
     predictions : torch.Tensor
-        A tensor representing edge predictions.
+        A binary tensor representing predictions for edges in the graph.
     preds_prob : torch.Tensor
         A tensor containing edge prediction probabilities.
+    edge_list : list
+        A list of edges in the graph.
+    num_nodes : int
+        The number of nodes in the graph.
+    predicted_act_edges : list
+        A list of currently active edges in the graph.
     num_cameras : int
-        The threshold number of nodes in a cluster to trigger splitting.
+        The threshold for the number of cameras in a label.
+    directed_graph : bool
+        A boolean indicating whether the graph is directed or undirected.
 
     Returns
-    ========
+    -------
     torch.Tensor
-        The modified edge predictions after splitting clusters.
+        A modified binary tensor of predictions after edge disjointing.
+
     """
+    # Step 1: Identify labels (ID_pred) with more than 'num_cameras' elements
+    label_ID_to_disjoint = torch.where(torch.bincount(ID_pred) > num_cameras)[0]
 
-    # Find cluster IDs with more than num_cameras nodes
-    cluster_sizes = torch.bincount(ID_pred)
-    clusters_to_disjoint = torch.nonzero(cluster_sizes > num_cameras).flatten()
-
-    for cluster_id in clusters_to_disjoint:
-        # Find nodes in the cluster
-        nodes_to_disjoint = torch.where(ID_pred == cluster_id)[0]
+    # If there are labels to disjoint
+    if len(label_ID_to_disjoint) >= 1:
         
-        # Accounting for compatibility between torch 1.7 and 2.1
-        if hasattr(torch, 'isin') and callable(getattr(torch, 'isin')):
-            bool_edges = torch.isin(torch.tensor(list(G.edges())), nodes_to_disjoint)
-        else:
-            bool_edges = torch_isin(torch.tensor(list(G.edges())), nodes_to_disjoint)
-            
-        # Find active edges involving nodes in the cluster
-        active_edges_to_disjoint = torch.nonzero(
-            torch.any(bool_edges, dim=1)
-        ).flatten()
+        # Select the first label that meets the criteria
+        l = label_ID_to_disjoint[0]
+        flag_need_disjoint = True
 
-        if len(active_edges_to_disjoint) > 0:
-            # Find edge with minimum probability among active edges
-            min_prob_edge = torch.argmin(preds_prob[active_edges_to_disjoint])
+        while flag_need_disjoint:
+            # Step 2: Identify edges to be disjointed
+            global_idx_new_predicted_active_edges = (predictions == 1).nonzero(as_tuple=True)[0]
+            nodes_to_disjoint = torch.where(ID_pred == l)[0]
 
-            # Set the prediction for the edge with minimum probability to 0
-            predictions[active_edges_to_disjoint[min_prob_edge]] = 0
+            # Identify active edges to disjoint
+            idx_active_edges_to_disjoint = [pos for pos, n in enumerate(predicted_act_edges) if np.any(np.in1d(nodes_to_disjoint, n))]
 
-            # Update the graph G based on remaining active edges
-            remaining_active_edges = [
-                (edge[0], edge[1]) for edge in G.edges()
-            ]
-            G = nx.DiGraph(remaining_active_edges) if directed_graph else nx.Graph(remaining_active_edges)
+            # Step 4: Remove edges based on minimum probability
+            global_idx_edges_disjoint = global_idx_new_predicted_active_edges[torch.tensor(idx_active_edges_to_disjoint)]
+            min_prob = torch.min(preds_prob[global_idx_edges_disjoint])
+            global_idx_min_prob = torch.where(preds_prob == min_prob)[0]
+            predictions[global_idx_min_prob] = 0
 
-            # Recursively split clusters
+            # Step 5: Check if further disjointing is needed
+            predicted_act_edges = [(edge_list[0][pos], edge_list[1][pos]) for pos in torch.where(predictions == 1)[0]]
+            G = nx.DiGraph(predicted_act_edges) if directed_graph else nx.Graph(predicted_act_edges)
             ID_pred, _ = connected_componnets(G, num_nodes, directed_graph)
-    
+
+            if np.bincount(ID_pred)[l] > num_cameras:
+                flag_need_disjoint = True
+            else:
+                flag_need_disjoint = False
+
+                # Step 6: Recursively call 'splitting' to further disjoint
+                splitting(ID_pred, 
+                          predictions, 
+                          preds_prob, 
+                          edge_list, 
+                          num_nodes, 
+                          predicted_act_edges,
+                          num_cameras,
+                          directed_graph)
     return predictions
 
 
@@ -238,7 +256,7 @@ def remove_edges_single_direction(active_edges, predictions, edge_list):
     return new_predictions, new_predicted_active_edges
 
 
-def get_active_edges(edge_list, whole_edges_prediction, directed_graph=True):
+def get_active_edges(edge_list, whole_edges_prediction):
     """ Get form the whole set of edges, the ones that are predicted 
     as active by the Graph Neural Network and deactivates the predicted active edges
     that are not bidirectional, since the graph should be undirected.
@@ -263,11 +281,6 @@ def get_active_edges(edge_list, whole_edges_prediction, directed_graph=True):
     pred_active_edges = [(edge_list[0][pos], edge_list[1][pos]) 
                                for pos, p in enumerate(whole_edges_prediction) if p == 1]
     
-    if directed_graph:
-        whole_edges_prediction, pred_active_edges = remove_edges_single_direction(pred_active_edges,
-                                                                                whole_edges_prediction, 
-                                                                                edge_list)
-    
     return whole_edges_prediction, pred_active_edges
 
 
@@ -276,11 +289,17 @@ def postprocessing(num_cameras,
                    whole_edges_prediction, 
                    edge_list, 
                    data,
-                   directed_graph=True):
+                   directed_graph=True,
+                   remove_unidirectional=False):
     """ Perform postprocessing procedure on the set of edge predictions.
     The procedures follow (pruning -> connected_components -> splitting -> connected components)
     """
-    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction, directed_graph)
+    whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, whole_edges_prediction)
+
+    if directed_graph and remove_unidirectional:
+        whole_edges_prediction, pred_active_edges = remove_edges_single_direction(pred_active_edges,
+                                                                                  whole_edges_prediction, 
+                                                                                  edge_list)
     
     # Pruning edges that violates num_camera contraints
     predictions_r = pruning(data, 
@@ -294,26 +313,30 @@ def postprocessing(num_cameras,
     
     # Get set of predicted active edges that go both ways (no single direction)
     whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, 
-                                                                 whole_edges_prediction, 
-                                                                 directed_graph)
+                                                                 whole_edges_prediction)
+    
+    if directed_graph and remove_unidirectional:
+        whole_edges_prediction, pred_active_edges = remove_edges_single_direction(pred_active_edges,
+                                                                                  whole_edges_prediction, 
+                                                                                  edge_list)
     
     # Get clusters of active edges. Each cluster represents an object id
     G = nx.DiGraph(pred_active_edges) if directed_graph else nx.Graph(pred_active_edges)
     id_pred, _ = connected_componnets(G, data.num_nodes, directed_graph)
 
     # Perform splitting for conencted components that present bridges
-    whole_edges_prediction = split_clusters(G, 
-                                            id_pred, 
-                                            whole_edges_prediction, 
-                                            preds_prob[:,1], 
-                                            num_cameras, 
-                                            data.num_nodes, 
-                                            directed_graph)
+    whole_edges_prediction = splitting(id_pred, 
+                                       whole_edges_prediction, 
+                                       preds_prob[:,1], 
+                                       edge_list, 
+                                       data.num_nodes, 
+                                       pred_active_edges,
+                                       num_cameras, 
+                                       directed_graph)
 
     # Get initial set of predicted active edges
     whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, 
-                                                                 whole_edges_prediction, 
-                                                                 directed_graph)
+                                                                 whole_edges_prediction)
     
     # Get clusters of active edges. Each cluster represents an object id
     G = nx.DiGraph(pred_active_edges) if directed_graph else nx.Graph(pred_active_edges)
@@ -384,7 +407,7 @@ def is_outside_roi(row, roi):
         return True
     
     # roi[row['ymin'], row['xmin']] == true means it is inside roi 
-    return not roi[row['ymin'], row['xmin']]
+    return not roi[row['ymin'] + int(row['height']//2), row['xmin'] + int(row['width']//2)]
 
 
 def remove_non_roi(sequence_path, data_df):
@@ -461,7 +484,7 @@ def fix_annotation_frames(gt_df, pred_df):
     return pd.concat(gt_camera_dfs), pd.concat(pred_camera_dfs)
 
 
-def filter_dets_outside_frame_bounds(det_df, frame_width, frame_height, boundary_percentage=0.05):
+def filter_dets_outside_frame_bounds(det_df, frame_width, frame_height, boundary_percentage=0.1):
     """Filter bounding boxes outside frame boundaries.
     This function filters the rows in the input DataFrame (det_df) based on whether
     the bounding boxes are within the specified frame boundaries. Bounding boxes that
@@ -480,8 +503,8 @@ def filter_dets_outside_frame_bounds(det_df, frame_width, frame_height, boundary
         The height of the frame.
 
     boundary_percentage : float, optional
-        Margin as a percentage of the frame dimensions (default is 0.05, representing
-        a 5% margin).
+        Margin as a percentage of the frame dimensions (default is 0.1, representing
+        a 10% margin).
 
     Returns
     ==========
@@ -500,7 +523,7 @@ def filter_dets_outside_frame_bounds(det_df, frame_width, frame_height, boundary
 
     # Check if bounding box y-axis is inside the frame with a margin
     cond1 = (frame_height * boundary_percentage <= det_df['ymin'] + det_df['height'])
-    cond2 = det_df['ymin'] + det_df['height'] <= frame_height - frame_height * boundary_percentage
+    cond2 = det_df['ymin'] + det_df['height'] <= frame_height - (frame_height * boundary_percentage)
     idx_h = np.logical_and(cond1, cond2)
 
     # Combine both conditions to filter the DataFrame
