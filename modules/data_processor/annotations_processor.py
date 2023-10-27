@@ -198,4 +198,4 @@ class AnnotationsProcessor(object):
                                             self.annotations_filename)
                 
                 annotations_dfs.append(pd.read_csv(annotations_path))
-        return pd.concat(annotations_dfs, axis=0).sort_values(by=sort_column)
+        return pd.concat(annotations_dfs, axis=0).sort_values(by=sort_column, ignore_index=True)
