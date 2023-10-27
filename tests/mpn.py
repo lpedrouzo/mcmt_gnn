@@ -3,19 +3,39 @@ from torch import nn
 
 from torch_scatter import scatter_mean, scatter_max, scatter_add
 
-# from mot_neural_solver.models.mlp import MLP
-from ..layers.mlp import MLP
+class MLP(nn.Module):
+    def __init__(self, input_dim, fc_dims, dropout_p=0.4, use_batchnorm=False, is_classifier=False):
+        super(MLP, self).__init__()
 
-# Set a global random seed for CPU
-torch.manual_seed(11)
+        assert isinstance(fc_dims, (list, tuple)), 'fc_dims must be either a list or a tuple, but got {}'.format(
+            type(fc_dims))
 
-# Set a global random seed for CUDA (GPU) if available
-if torch.cuda.is_available():
-    torch.cuda.manual_seed(11)
+        layers = []
+        if not(is_classifier):
+            for dim in fc_dims:
+                layers.append(nn.Linear(input_dim, dim))
+                if use_batchnorm and dim != 1:
+                    layers.append(nn.BatchNorm1d(dim,track_running_stats=False))
 
-# Additional CUDA configurations for reproducibility (optional)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
+                if dim != 1:
+                    layers.append(nn.ReLU(inplace=True))
+
+                if dropout_p is not None and dim != 1:
+                    layers.append(nn.Dropout(p=dropout_p))
+
+                input_dim = dim
+        else:
+            for dim in fc_dims:
+                layers.append(nn.Linear(input_dim, dim))
+
+
+        self.fc_layers = nn.Sequential(*layers)
+
+    def forward(self, input):
+        return self.fc_layers(input)
+    
+
+    from torch_scatter import scatter_mean, scatter_max, scatter_add
 
 
 class MetaLayer(torch.nn.Module):
@@ -67,7 +87,6 @@ class MetaLayer(torch.nn.Module):
     def __repr__(self):
         return '{}(edge_model={}, node_model={})'.format(self.__class__.__name__, self.edge_model, self.node_model)
 
-
 class EdgeModel(nn.Module):
     """
     Class used to peform the edge update during Neural message passing
@@ -79,7 +98,6 @@ class EdgeModel(nn.Module):
     def forward(self, source, target, edge_attr):
         out = torch.cat([source, target, edge_attr], dim=1)
         return self.edge_mlp(out)
-
 
 class NodeModel(nn.Module):
     """
@@ -93,13 +111,25 @@ class NodeModel(nn.Module):
 
     def forward(self, x, edge_index, edge_attr):
         row, col = edge_index
+        # flow_out_mask = row < col
+        # flow_out_row, flow_out_col = row[flow_out_mask], col[flow_out_mask]
+        # flow_out_input = torch.cat([x[flow_out_col], edge_attr[flow_out_mask]], dim=1)
+        # flow_out = self.flow_out_mlp(flow_out_input)
+        # flow_out = self.node_agg_fn(flow_out, flow_out_row, x.size(0))
+        #
+        # flow_in_mask = row > col
+        # flow_in_row, flow_in_col = row[flow_in_mask], col[flow_in_mask]
+        # flow_in_input = torch.cat([x[flow_in_col], edge_attr[flow_in_mask]], dim=1)
+        # flow_in = self.flow_in_mlp(flow_in_input)
+        #
+        # flow_in = self.node_agg_fn(flow_in, flow_in_row, x.size(0))
+        # flow = torch.cat((flow_in, flow_out), dim=1)
 
         flow = torch.cat([x[row], edge_attr], dim=1)
         flow_updated = self.node_mlp(flow)
         agg_messages_nodes = self.node_agg_fn(flow_updated, row, x.size(0))
 
         return agg_messages_nodes
-
 
 class MLPGraphIndependent(nn.Module):
     """
@@ -130,16 +160,17 @@ class MLPGraphIndependent(nn.Module):
 
         if self.node_mlp is not None and nodes_feats is not None:
             out_node_feats = self.node_mlp(nodes_feats)
+
         else:
             out_node_feats = nodes_feats
 
         if self.edge_mlp is not None and edge_feats is not None:
             out_edge_feats = self.edge_mlp(edge_feats)
+
         else:
             out_edge_feats = edge_feats
 
         return out_edge_feats, out_node_feats
-
 
 class MOTMPNet(nn.Module):
     """
@@ -151,7 +182,7 @@ class MOTMPNet(nn.Module):
     This class was initially based on: https://github.com/deepmind/graph_nets tensorflow implementation.
     """
 
-    def __init__(self, model_params):
+    def __init__(self, model_params, bb_encoder = None, arch=None):
         """
         Defines all components of the model
         Args:
@@ -160,11 +191,12 @@ class MOTMPNet(nn.Module):
         """
         super(MOTMPNet, self).__init__()
 
+        self.node_cnn = bb_encoder
         self.model_params = model_params
 
         # Define Encoder and Classifier Networks
         edges_params = model_params['encoder_feats_dict']['edges']
-        nodes_params = model_params['encoder_feats_dict']['nodes']
+        nodes_params = model_params['encoder_feats_dict']['nodes'][arch]
         edges_params.update(nodes_params)
         encoder_feats_dict = edges_params
         classifier_feats_dict = model_params['classifier_feats_dict']
@@ -221,16 +253,29 @@ class MOTMPNet(nn.Module):
                        fc_dims=edge_model_feats_dict['fc_dims'],
                        dropout_p=edge_model_feats_dict['dropout_p'],
                        use_batchnorm=edge_model_feats_dict['use_batchnorm'])
+        #
+        # flow_in_mlp = MLP(input_dim=node_model_in_dim,
+        #                   fc_dims=node_model_feats_dict['fc_dims'],
+        #                   dropout_p=node_model_feats_dict['dropout_p'],
+        #                   use_batchnorm=node_model_feats_dict['use_batchnorm'])
+        # #
+        # flow_out_mlp = MLP(input_dim=node_model_in_dim,
+        #                    fc_dims=node_model_feats_dict['fc_dims'],
+        #                    dropout_p=node_model_feats_dict['dropout_p'],
+        #                    use_batchnorm=node_model_feats_dict['use_batchnorm'])
 
         node_mlp = MLP(input_dim=node_model_in_dim,
                            fc_dims=node_model_feats_dict['fc_dims'],
                            dropout_p=node_model_feats_dict['dropout_p'],
                            use_batchnorm=node_model_feats_dict['use_batchnorm'])
 
+        node_mlp_old = nn.Sequential(*[nn.Linear(2 * encoder_feats_dict['node_out_dim'], encoder_feats_dict['node_out_dim']),
+                                   nn.ReLU(inplace=True)])
+
         # Define all MLPs used within the MPN
         return MetaLayer(edge_model=EdgeModel(edge_mlp = edge_mlp),
                          node_model=NodeModel(node_mlp = node_mlp,
-                                              node_agg_fn = node_agg_fn))
+                                                       node_agg_fn = node_agg_fn))
 
 
     def forward(self, data):
@@ -251,10 +296,12 @@ class MOTMPNet(nn.Module):
         """
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
 
+
         # As I only have 1 value in the edge features, i dont encode it. encoder inside = E_v y E_e
-        latent_edge_feats, latent_node_feats = self.encoder(edge_attr, x)
+        latent_edge_feats, latent_node_feats = self.encoder(edge_attr, data.x)
         initial_edge_feats = latent_edge_feats
         initial_node_feats = latent_node_feats
+
 
         # During training, the feature vectors that the MPNetwork outputs for the  last self.num_class_steps message
         # passing steps are classified in order to compute the loss.

@@ -16,7 +16,6 @@ training_config:
     num_ids_per_graph: 64
     embeddings_per_iteration: 512
     resized_img_shape: [224, 224]
-    original_img_shape: [1920, 1080]
     train_batch_size: 1
     test_batch_size: 1
     negative_sampling: false # Negative sampling to balance training
@@ -25,6 +24,7 @@ training_config:
     alpha: [0.25, 0.75]
     gamma: 2
   lr_scheduler:
+    toggle: off
     scheduler_type: 'step' 
     step_size: 50
     gamma: 0.1
@@ -59,7 +59,7 @@ gnn_arch:
 
   # MPN edge update
   edge_model_feats_dict:
-    fc_dims: [4, 4] 
+    fc_dims: [4] 
     dropout_p: 0.1
     use_batchnorm: True
 

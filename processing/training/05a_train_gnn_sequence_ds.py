@@ -23,7 +23,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Set a global random seed for CPU
 torch.manual_seed(11)
-np.random.seed(42)
+np.random.seed(11)
 
 # Set a global random seed for CUDA (GPU) if available
 if torch.cuda.is_available():
@@ -71,17 +71,14 @@ if __name__ == "__main__":
     # Instantiating the Graph dataset using the detections of data_df 
     train_dataset = ObjectGraphDataset(train_df, 
                                        sequence_path_prefix=dataset_config['sequence_path_prefix'], 
-                                       sequence_names=dataset_config['sequences_train'], 
-                                       annotations_filename=dataset_config['annotations_filename'], 
                                        reid_model=reid_model,
                                        num_ids_per_graph=dataset_config['num_ids_per_graph'], 
                                        embeddings_per_it=dataset_config['embeddings_per_iteration'], 
                                        resized_img_shape=dataset_config['resized_img_shape'], 
-                                       orignal_img_shape=dataset_config['original_img_shape'], 
                                        augmentation=augmentation,
                                        return_dataframes=False,
                                        negative_sampling=dataset_config['negative_sampling'],
-                                       transform=T.ToUndirected())
+                                       graph_transform=T.ToUndirected())
     
     # Consolidating annotations from all cameras in S02 into a single dataframe
     test_df = AnnotationsProcessor(
@@ -97,13 +94,10 @@ if __name__ == "__main__":
     # Test dataset has NO augmentation and NO sampling. All objects loaded at once
     val_dataset = ObjectGraphDataset(test_df, 
                                       sequence_path_prefix=dataset_config['sequence_path_prefix'], 
-                                      sequence_names=dataset_config['sequences_val'], 
-                                      annotations_filename=dataset_config['annotations_filename'], 
                                       reid_model=reid_model,
                                       num_ids_per_graph=-1, # -1 means load all ids
                                       embeddings_per_it=dataset_config['embeddings_per_iteration'], 
                                       resized_img_shape=dataset_config['resized_img_shape'], 
-                                      orignal_img_shape=dataset_config['original_img_shape'], 
                                       augmentation=None, # No augmentation for validation of course
                                       return_dataframes=False,
                                       transform=T.ToUndirected()) 
@@ -156,18 +150,21 @@ if __name__ == "__main__":
 
 
     # 5 - Learning rate decay scheduler
-    if lr_scheduler_config["scheduler_type"] == 'step':
-        lr_scheduler = StepLR(optimizer, 
-                            lr_scheduler_config["step_size"], 
-                            lr_scheduler_config["gamma"])
-        
-    elif lr_scheduler_config["scheduler_type"] == 'cosine':
-        lr_scheduler = CosineAnnealingLR(optimizer,
-                                        T_max=lr_scheduler_config["tmax"])
+    if lr_scheduler_config['toggle']:
+        if lr_scheduler_config["scheduler_type"] == 'step':
+            lr_scheduler = StepLR(optimizer, 
+                                lr_scheduler_config["step_size"], 
+                                lr_scheduler_config["gamma"])
+            
+        elif lr_scheduler_config["scheduler_type"] == 'cosine':
+            lr_scheduler = CosineAnnealingLR(optimizer,
+                                            T_max=lr_scheduler_config["tmax"])
+        else:
+            raise Exception(f'Learning rate scheduler {lr_scheduler_config["scheduler_type"]} is not supported.')
+        print(f"Success creating learning rate scheduler: {lr_scheduler_config['scheduler_type']}")
     else:
-        raise Exception(f'Learning rate scheduler {lr_scheduler_config["scheduler_type"]} is not supported.')
-    print(f"Success creating learning rate scheduler: {lr_scheduler_config['scheduler_type']}")
-
+        lr_scheduler = None
+        
     # 6 - Definition  of training engine using our custom object
     training_engine = TrainingEngine(train_dataloader, val_dataloader, gnn, training_config["checkpoint_path_prefix"], device)
     training_engine.setup_engine(

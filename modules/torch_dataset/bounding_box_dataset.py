@@ -13,12 +13,8 @@ class BoundingBoxDataset(Dataset):
     the image patch corresponding to the detection's bounding box coordinates
     """
     def __init__(self, det_df:pd.DataFrame, 
-                 frame_height:int, 
-                 frame_width:int, 
                  frame_dir:str,
                  fully_qualified_dir=True,
-                 pad_:bool = True, 
-                 pad_mode:str = 'mean', 
                  output_size:tuple = (128, 64),
                  return_det_ids_and_frame:bool = False,
                  mode='train',
@@ -26,12 +22,8 @@ class BoundingBoxDataset(Dataset):
         
         # Initialization of constructor variables
         self.det_df = det_df
-        self.frame_width = frame_width
-        self.frame_height = frame_height
         self.frame_dir = frame_dir
-        self.pad_mode = pad_mode
         self.fully_qualified_dir = fully_qualified_dir
-        self.pad = pad_
         
         transform_list = [Resize(output_size), 
                           ToTensor(), 
@@ -115,15 +107,7 @@ class BoundingBoxDataset(Dataset):
         bb_img = frame_img[int(max(0, row['ymin'])): int(max(0, row['ymax'])),
                    int(max(0, row['xmin'])): int(max(0, row['xmax']))]
         
-        if self.pad:
-            x_height_pad = np.abs(row['ymin'] - max(row['ymin'], 0)).astype(int)
-            y_height_pad = np.abs(row['ymax'] - min(row['ymax'], self.frame_height)).astype(int)
-
-            x_width_pad = np.abs(row['xmin'] - max(row['xmin'], 0)).astype(int)
-            y_width_pad = np.abs(row['xmax'] - min(row['xmax'], self.frame_width)).astype(int)
-
-            bb_img = np.pad(bb_img, ((x_height_pad, y_height_pad), (x_width_pad, y_width_pad), (0, 0)), mode=self.pad_mode)
-
+        # Apply transformations
         bb_img = Image.fromarray(bb_img)
         if self.transforms is not None:
             bb_img = self.transforms(bb_img)

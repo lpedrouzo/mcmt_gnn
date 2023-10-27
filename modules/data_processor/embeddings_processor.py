@@ -12,12 +12,10 @@ from torch.utils.data import DataLoader
 from time import time
 from tqdm import tqdm
 from functools import partial
-from tqdm import tqdm
+
 class EmbeddingsProcessor(object):
 
     def __init__(self, 
-                 frame_width:int=None, 
-                 frame_height:int=None, 
                  img_batch_size:int=None, 
                  cnn_model=None, 
                  img_size:tuple=None, 
@@ -27,10 +25,8 @@ class EmbeddingsProcessor(object):
                  annotations_sep:str=',',
                  num_workers:int=2):
         
-        self.frame_width = frame_width
-        self.frame_height = frame_height
         self.img_batch_size = img_batch_size
-        self.sequence_path = sequence_path 
+        self.sequence_path = sequence_path  
         self.sequence_name = sequence_name
         self.img_size = img_size
         self.cnn_model = cnn_model
@@ -59,8 +55,6 @@ class EmbeddingsProcessor(object):
 
         ds = BoundingBoxDataset(det_df, 
                                 frame_dir=frame_dir,
-                                frame_width=self.frame_width, 
-                                frame_height=self.frame_height, 
                                 output_size=self.img_size,
                                 fully_qualified_dir=fully_qualified_dir,
                                 return_det_ids_and_frame=True,

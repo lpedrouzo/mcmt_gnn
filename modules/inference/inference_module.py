@@ -27,7 +27,7 @@ class InferenceModule(nn.Module):
                                  "/mcmt_gnn/datasets/AIC20")
     inf_module.predict_tracks((graph, node_df, edge_df))
     """
-    def __init__(self, model, data_df, sequence_path, directed_graph=True):
+    def __init__(self, model, data_df, sequence_path, directed_graph=True, remove_unidirectional=False):
         super().__init__()
         self.model = model
         self.model.eval()
@@ -35,7 +35,8 @@ class InferenceModule(nn.Module):
         self.num_cameras = len(data_df.camera.unique())
         self.sequence_path = sequence_path
         self.directed_graph = directed_graph
-
+        self.remove_unidirectional = remove_unidirectional
+        
     def forward(self, data):
         """ Generate estimations of graph connectivity
         and post-process to obtain clusters. Each cluster
@@ -60,7 +61,7 @@ class InferenceModule(nn.Module):
             output_dict, _ = self.model(data)
             logits = torch.cat(output_dict['classified_edges'], dim=0)
             preds_prob = F.softmax(logits, dim=1).cpu()
-            predictions = torch.argmax(preds_prob, dim=1).cpu()
+            predictions = torch.argmax(logits, dim=1).cpu()
 
             edge_list = data.edge_index.cpu().numpy()
 
@@ -70,7 +71,8 @@ class InferenceModule(nn.Module):
                                                   predictions,
                                                   edge_list,
                                                   data.cpu(),
-                                                  self.directed_graph)
+                                                  self.directed_graph,
+                                                  self.remove_unidirectional)
         return id_pred, predictions
     
     def predict_tracks(self, batch, 
@@ -103,11 +105,14 @@ class InferenceModule(nn.Module):
         # Predict ids from CCs
         id_pred, _ = self.forward(data)
 
+        # Add old IDs as separate column to inspect
+        self.data_df['id_old'] = self.data_df.id
+
         # Generate tracking dataframe
         for n in range(len(data.x)):
             id_new = int(id_pred[n])
             cam_id = node_df.camera[n]
-            id_old = data.y[n]
+            id_old = node_df.object_id[n]
 
             # Assign the labels from the connected components to the detections df
             self.data_df.loc[(self.data_df['id'] == id_old) & 

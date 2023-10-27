@@ -14,29 +14,23 @@ np.random.seed(11)
 class ObjectGraphDataset(Dataset):
     def __init__(self, data_df,
                  sequence_path_prefix, 
-                 sequence_names, 
-                 annotations_filename, 
                  reid_model, 
                  num_ids_per_graph, 
                  embeddings_per_it, 
                  resized_img_shape, 
-                 orignal_img_shape, 
                  temporal_threshold=1300,
                  augmentation=None, 
                  frames_num_workers=2,
                  return_dataframes=True,
-                 transform=None, 
                  negative_sampling=False,
                  num_neg_samples=None,
-                 pre_transform=None):
+                 graph_transform=None):
 
-        super(ObjectGraphDataset, self).__init__(None, transform, pre_transform)
+        super(ObjectGraphDataset, self).__init__(None, None, None)
 
         self.all_annotations_df = data_df
         self.sequence_path_prefix = sequence_path_prefix
         self.frame_dir = osp.join(self.sequence_path_prefix, "frames")
-        self.sequence_names = sequence_names
-        self.annotations_filename = annotations_filename
         self.temporal_threshold = temporal_threshold
         self.augmentation = augmentation
         self.return_dataframes = return_dataframes
@@ -44,11 +38,10 @@ class ObjectGraphDataset(Dataset):
         self.negative_sampling = negative_sampling
         self.num_neg_samples = num_neg_samples
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
+        self.graph_transform = graph_transform
+
         # This object will help computing embeddings
-        self.emb_proc = EmbeddingsProcessor(orignal_img_shape[0], 
-                                            orignal_img_shape[1], 
-                                            img_size=resized_img_shape,
+        self.emb_proc = EmbeddingsProcessor(img_size=resized_img_shape,
                                             img_batch_size=embeddings_per_it, 
                                             cnn_model=reid_model,
                                             num_workers=frames_num_workers)
@@ -361,6 +354,10 @@ class ObjectGraphDataset(Dataset):
                      edge_attr=edge_embeddings, 
                      edge_labels=edge_labels)
         
+        # Do transformation if defined
+        if self.graph_transform:
+            graph = self.graph_transform(graph)
+
         if self.return_dataframes:
             return graph.to(self.device), node_df, edge_df, sampled_df
         else:

@@ -164,7 +164,7 @@ class AnnotationsProcessor(object):
             det_df.to_csv(osp.join(self.annotations_path_prefix, annotation_folder), 
                           sep=self.delimiter, index=False)
 
-    def consolidate_annotations(self, sequence_names:list):
+    def consolidate_annotations(self, sequence_names:list, sort_column:str):
         """ Concatenate multiple annotation DataFrames into a single DataFrame.
         This function will effectively take all the annotations
         from all sequences, and all cameras within each sequence
@@ -198,4 +198,4 @@ class AnnotationsProcessor(object):
                                             self.annotations_filename)
                 
                 annotations_dfs.append(pd.read_csv(annotations_path))
-        return pd.concat(annotations_dfs, axis=0)
+        return pd.concat(annotations_dfs, axis=0).sort_values(by=sort_column, ignore_index=True)
