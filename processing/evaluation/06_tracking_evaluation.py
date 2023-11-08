@@ -33,13 +33,10 @@ if __name__ == '__main__':
     # Instantiating the Graph dataset using the detections of data_df 
     dataset = ObjectGraphDataset(data_df, 
                                 sequence_path_prefix=path_config['sequence_path'], 
-                                sequence_names=dataset_config['evaluation_sequence'], 
-                                annotations_filename=dataset_config['annotations_filename'], 
                                 reid_model=reid_model,
                                 num_ids_per_graph=-1, 
                                 embeddings_per_it=dataset_config['embeddings_per_iteration'], 
                                 resized_img_shape=dataset_config['resized_img_shape'], 
-                                orignal_img_shape=dataset_config['original_img_shape'], 
                                 augmentation=None,
                                 graph_transform=T.ToUndirected() if config['directed_graph'] else None)
 
@@ -49,7 +46,7 @@ if __name__ == '__main__':
     # Loading the trained GNN model 
     model_state = torch.load(path_config['gnn_model_checkpoint'])
     model = MOTMPNet(gnn_arch).to(device)
-    model.load_state_dict(model_state['model'], map_location=torch.device('cpu'))
+    model.load_state_dict(model_state['model_state_dict'], map_location=device)
 
     img_width, img_height = dataset_config['original_img_shape']
 
