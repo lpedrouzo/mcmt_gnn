@@ -8,10 +8,12 @@ import multiprocessing
 
 from .utils import try_loading_logs, get_incremental_folder, get_previous_folder
 from ..torch_dataset.bounding_box_dataset import BoundingBoxDataset
+from ..torch_dataset.reid_embedding_dataset import REIDEmbeddingDataset
 from torch.utils.data import DataLoader
 from time import time
 from tqdm import tqdm
 from functools import partial
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 class EmbeddingsProcessor(object):
 
@@ -36,7 +38,7 @@ class EmbeddingsProcessor(object):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-    def load_embeddings_from_imgs(self, det_df, frame_dir, fully_qualified_dir, mode, augmentation=None, return_imgs = False):
+    def load_embeddings_from_imgs(self, det_df, frame_dir, fully_qualified_dir, mode, augmentation=None):
         """
         Computes embeddings for each detection in det_df with a CNN.
         Args:
@@ -49,10 +51,10 @@ class EmbeddingsProcessor(object):
             cnn_model: CNN to compute embeddings with. It needs to return BOTH node embeddings and reid embeddings
             return_imgs: bool, determines whether RGB images must also be returned
         Returns:
-            (bb_imgs for each det or [], torch.Tensor with shape (num_detects, node_embeddings_dim), torch.Tensor with shape (num_detects, reidembeddings_dim))
+            (bb_imgs for each det or [], torch.Tensor with shape (num_detects, node_embeddings_dim), 
+            torch.Tensor with shape (num_detects, reidembeddings_dim))
 
         """
-
         ds = BoundingBoxDataset(det_df, 
                                 frame_dir=frame_dir,
                                 output_size=self.img_size,
@@ -63,12 +65,37 @@ class EmbeddingsProcessor(object):
         
         bb_loader = DataLoader(ds, 
                                batch_size=self.img_batch_size, 
-                               pin_memory=True, 
                                num_workers=self.num_workers)
         
         self.cnn_model.eval()
+        return self._compute_reid_data(bb_loader, 
+                                       lambda bbox_img: self.cnn_model(bbox_img.to(self.device)))
 
-        bb_imgs = []
+
+    def load_embeddings_from_filesystem(self, 
+                                        det_df, 
+                                        frame_dir, 
+                                        fully_qualified_dir, 
+                                        mode):
+        
+        assert self.annotations_filename, "You should set the name of the annotations file before loadind embeddings from FS."
+        
+        ds = REIDEmbeddingDataset(det_df, 
+                                  frame_dir=frame_dir, 
+                                  annotations_filename=self.annotations_filename,
+                                  fully_qualified_dir=fully_qualified_dir, 
+                                  return_det_ids_and_emb=True, 
+                                  mode=mode)
+        
+        embedding_loader = DataLoader(ds,
+                                      batch_size=self.img_batch_size,
+                                      num_workers=self.num_workers)
+        
+        return self._compute_reid_data(embedding_loader,
+                                       lambda bbox_embedding: (bbox_embedding, bbox_embedding) )
+        
+
+    def _compute_reid_data(self, loader, reid_fn):
         node_embeds = []
         reid_embeds = []
         frame_nums = []
@@ -77,9 +104,10 @@ class EmbeddingsProcessor(object):
         camera_ids = []
 
         with torch.no_grad():
-            for frame_num, det_id, camera, sequence, bboxes in tqdm(bb_loader):
-                # Compute REID embeddings
-                node_out, reid_out = self.cnn_model(bboxes.to(self.device))
+            for frame_num, det_id, camera, sequence, core_bbox_obj in tqdm(loader):
+
+                # Compute REID embeddings, core_bbox_obj can be image patch, or embedding
+                node_out, reid_out = reid_fn(core_bbox_obj)
 
                 # Add the info from the bounding box dataset to the lists
                 node_embeds.append(node_out.to(self.device))
@@ -88,9 +116,6 @@ class EmbeddingsProcessor(object):
                 det_ids.append(det_id)
                 sequence_ids.append(sequence)
                 camera_ids.append(camera)
-
-                if return_imgs:
-                    bb_imgs.append(bboxes)
 
         # Flatten the arrays and convert to torch.tensor
         det_ids = np.concatenate(det_ids, axis=None)
@@ -101,47 +126,8 @@ class EmbeddingsProcessor(object):
         node_embeds = torch.cat(node_embeds, dim=0)
         reid_embeds = torch.cat(reid_embeds, dim=0)
 
-        return bb_imgs, node_embeds, reid_embeds, det_ids, frame_nums, sequence_ids, camera_ids
-
-
-    def load_precomputed_embeddings(self, det_df, embeddings_dir):
-        """
-        Given a sequence's detections, it loads from disk embeddings that have already been computed and stored for its
-        detections
-        Args:
-            det_df: pd.DataFrame with detection coordinates
-            seq_info_dict: dict with sequence meta info (we need frame dims)
-            embeddings_dir: name of the directory where embeddings are stored
-
-        Returns:
-            torch.Tensor with shape (num_detects, embeddings_dim)
-
-        """
-        assert self.sequence_name is not None and self.sequence_path is not None, \
-               "Make sure both sequence_name and sequence_path are defined"+ \
-               "in the constructor before calling load_precomputed_embeddings()"
-        assert embeddings_dir is not None, "You need to define an embedings directory to load embeddings."
+        return node_embeds, reid_embeds, det_ids, frame_nums, sequence_ids, camera_ids
         
-        # Retrieve the embeddings we need from their corresponding locations
-        embeddings_path = osp.join(self.sequence_path, 'embeddings', self.sequence_name, 
-                                   'generic' if self.annotations_filename is None else self.annotations_filename , embeddings_dir)
-        print("Defined embeddings path is ", embeddings_path)
-
-        frames_to_retrieve = sorted(det_df.frame.unique())
-        embeddings_list = [torch.load(osp.join(embeddings_path, f"{frame_num}.pt")) for frame_num in frames_to_retrieve]
-        embeddings = torch.cat(embeddings_list, dim=0)
-
-        # First column in embeddings is the index. Drop the rows of those that are not present in det_df
-        ixs_to_drop = list(set(embeddings[:, 0].int().numpy()) - set(det_df['id']))
-        embeddings = embeddings[~np.isin(embeddings[:, 0], ixs_to_drop)]  # Not so clean, but faster than a join
-
-        assert_str = "Problems loading embeddings. Indices between query and stored embeddings do not match. BOTH SHOULD BE SORTED!"
-        assert (embeddings[:, 0].numpy() == det_df['id'].values).all(), assert_str
-
-        embeddings = embeddings[:, 1:]  # Get rid of the detection index
-
-        return embeddings.to(self.device)
-
 
     def store_embeddings(self, max_detections_per_df:int, mode:str='train', augmentation=None):
         """ Compute and store node and reid embeddings for all cameras in the sequence.
@@ -189,21 +175,13 @@ class EmbeddingsProcessor(object):
 
         # Create dirs to store embeddings (node embeddings)
         node_embeds_path_prefix = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic' if self.annotations_filename is None else self.annotations_filename)
+                                    'generic' if self.annotations_filename is None else self.annotations_filename, "node")
         os.makedirs(node_embeds_path_prefix, exist_ok=True)
-
-        node_embeds_path = osp.join(node_embeds_path_prefix, 
-                                    get_incremental_folder(node_embeds_path_prefix, next_iteration_name=True), 'node')
-
             
         # reid embeddings
         reid_embeds_path_prefix = osp.join(self.sequence_path, 'embeddings', self.sequence_name,
-                                    'generic' if self.annotations_filename is None else self.annotations_filename)
+                                    'generic' if self.annotations_filename is None else self.annotations_filename, "reid")
         os.makedirs(reid_embeds_path_prefix, exist_ok=True)
-
-        reid_embeds_path = osp.join(reid_embeds_path_prefix, 
-                                    get_incremental_folder(reid_embeds_path_prefix, next_iteration_name=True), 'reid')
-
             
         # Frames
         frame_dir = osp.join(self.sequence_path, 'frames', self.sequence_name)
@@ -225,8 +203,8 @@ class EmbeddingsProcessor(object):
 
             det_df = pd.read_csv(osp.join(annotations_dir_prefix, annotations_dir), sep=self.annotations_sep)
             self._store_embeddings_camera(det_df, 
-                                          osp.join(node_embeds_path, frame_camera),
-                                          osp.join(reid_embeds_path, frame_camera),
+                                          osp.join(node_embeds_path_prefix, frame_camera),
+                                          osp.join(reid_embeds_path_prefix, frame_camera),
                                           osp.join(frame_dir, frame_camera),
                                           osp.join(logs_dir_prefix, frame_camera + '.json'),
                                           max_detections_per_df,
@@ -241,7 +219,8 @@ class EmbeddingsProcessor(object):
                                  log_dir, 
                                  max_detections_per_df,
                                  mode='train',
-                                 augmentation=None):
+                                 augmentation=None,
+                                 add_detection_id=False):
         """Store node and reid embeddings for detections in a camera.
         This method processes detections from a DataFrame, computes node and reid embeddings for each detection,
         and stores the embeddings in separate directories for node and reid embeddings.
@@ -310,11 +289,12 @@ class EmbeddingsProcessor(object):
 
             # Computing embeddings from previous function
             result = self.load_embeddings_from_imgs(sub_df, frame_dir, mode, augmentation)
-            _, node_embeds, reid_embeds, det_ids, frame_nums, _, _ = result
+            node_embeds, reid_embeds, det_ids, frame_nums, _, _ = result
 
-            # Add detection ids as first column of embeddings, to ensure that embeddings are loaded correctly
-            node_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float(), node_embeds), dim=1)
-            reid_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float(), reid_embeds), dim=1)
+            if add_detection_id:
+                # Add detection ids as first column of embeddings
+                node_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float().to(device), node_embeds), dim=1)
+                reid_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float().to(device), reid_embeds), dim=1)
 
             # Save embeddings grouped by frame
             for frame in sub_df.frame.unique():
@@ -322,8 +302,8 @@ class EmbeddingsProcessor(object):
                 frame_node_embeds = node_embeds[mask]
                 frame_reid_embeds = reid_embeds[mask]
 
-                frame_node_embeds_path = osp.join(node_embeds_path, f"{frame}.pt")
-                frame_reid_embeds_path = osp.join(reid_embeds_path, f"{frame}.pt")
+                frame_node_embeds_path = osp.join(node_embeds_path, f"{str(frame).zfill(6)}.pt")
+                frame_reid_embeds_path = osp.join(reid_embeds_path, f"{str(frame).zfill(6)}.pt")
 
                 torch.save(frame_node_embeds, frame_node_embeds_path)
                 torch.save(frame_reid_embeds, frame_reid_embeds_path)
