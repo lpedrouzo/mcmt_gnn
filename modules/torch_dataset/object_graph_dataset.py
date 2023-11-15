@@ -8,7 +8,7 @@ from torch_geometric.data import Data, Dataset
 from torch_geometric.utils.negative_sampling import negative_sampling
 from ..data_processor.embeddings_processor import EmbeddingsProcessor
 from ..data_processor.utils import check_nans_df, check_nans_tensor
-from .utils import simple_negative_sampling
+from .utils import simple_negative_sampling, get_n_rows_per_group
 np.random.seed(11)
 
 class ObjectGraphDataset(Dataset):
@@ -18,8 +18,9 @@ class ObjectGraphDataset(Dataset):
                  num_ids_per_graph, 
                  embeddings_per_it, 
                  resized_img_shape, 
-                 temporal_threshold=1300,
+                 frames_per_vehicle_cam=False,
                  augmentation=None, 
+                 normalize_embedding=False,
                  frames_num_workers=2,
                  return_dataframes=True,
                  negative_sampling=False,
@@ -31,7 +32,8 @@ class ObjectGraphDataset(Dataset):
         self.all_annotations_df = data_df
         self.sequence_path_prefix = sequence_path_prefix
         self.frame_dir = osp.join(self.sequence_path_prefix, "frames")
-        self.temporal_threshold = temporal_threshold
+        self.frames_per_vehicle_cam = frames_per_vehicle_cam
+        self.normalize_embedding = normalize_embedding
         self.augmentation = augmentation
         self.return_dataframes = return_dataframes
         self.initial_object_id_list = self.all_annotations_df.id.unique()
@@ -161,10 +163,6 @@ class ObjectGraphDataset(Dataset):
 
                     # Getting all the embeddings for an object obj_id in camera cam_id
                     obj_cam_embeds = reid_embeds[(det_ids == obj_id) & (camera_ids == cam_id)]
-
-                    # Temporal threshold for trajectories
-                    if self.temporal_threshold:
-                        obj_cam_embeds = obj_cam_embeds[:self.temporal_threshold]
 
                     # Getting the average embedding for object trajectories
                     mean_obj_cam_embed = torch.mean(obj_cam_embeds, dim=0)
@@ -323,6 +321,12 @@ class ObjectGraphDataset(Dataset):
         id_sample = self.precomputed_id_samples[idx]
         sampled_df = self.all_annotations_df[self.all_annotations_df.id.isin(id_sample)]
 
+        # If required, do not get the whole trajectories, get frames_per_vehicle_cam rows instead
+        if self.frames_per_vehicle_cam:
+            sampled_df = sampled_df.groupby(["id", "camera"]).apply(get_n_rows_per_group, 
+                                                                    self.frames_per_vehicle_cam)\
+                                                             .reset_index(drop=True)
+            
         check_nans_df(sampled_df, "sampled_df")
         
         print("Computing embeddings")
@@ -331,10 +335,9 @@ class ObjectGraphDataset(Dataset):
                                                           self.frame_dir,
                                                           fully_qualified_dir=False, 
                                                           mode="train", 
-                                                          augmentation=self.augmentation,
-                                                          return_imgs=False)
+                                                          augmentation=self.augmentation)
         
-        _, node_embeds, reid_embeds, det_ids, frame_nums, sequence_ids, camera_ids = results
+        node_embeds, reid_embeds, det_ids, frame_nums, sequence_ids, camera_ids = results
 
         print("Generating nodes")
         # Compute nodes embeddings and node info
@@ -342,6 +345,10 @@ class ObjectGraphDataset(Dataset):
                                                                  det_ids, 
                                                                  sequence_ids, 
                                                                  camera_ids)
+        
+        if self.normalize_embedding:
+            node_embeddings = F.normalize(node_embeddings, p=2, dim=0)
+
         print("Generating edges")
         # Compute edges embeddings and info
         edge_df, edge_idx, edge_embeddings, edge_labels = self.setup_edges(node_df, node_embeddings)
@@ -362,8 +369,134 @@ class ObjectGraphDataset(Dataset):
             return graph.to(self.device), node_df, edge_df, sampled_df
         else:
             return graph.to(self.device)
-        
 
-        
 
+
+class ObjectGraphREIDPrecompDataset(ObjectGraphDataset):
+    """ Pytorch Geometric Dataset definition that inherits from
+    ObjectGraphDataset defined aboce. This dataset has the same functionality
+    as its parent class, but it loads the REID embeddings from the filesystem instead
+    of computing them while building the graph.
+    """
+    def __init__(self, data_df,
+                 sequence_path_prefix, 
+                 annotations_filename,
+                 num_ids_per_graph, 
+                 embeddings_per_it, 
+                 frames_per_vehicle_cam=False,
+                 normalize_embedding=False,
+                 frames_num_workers=2,
+                 return_dataframes=True,
+                 negative_sampling=False,
+                 num_neg_samples=None,
+                 graph_transform=None):
+
+        # Call the constructor of the grandparent class (PyG Dataset)
+        super(ObjectGraphDataset, self).__init__(None, None, None)
+
+        self.all_annotations_df = data_df
+        self.sequence_path_prefix = sequence_path_prefix
+        self.annotations_filename = annotations_filename
+        self.frame_dir = osp.join(self.sequence_path_prefix, "embeddings")
+        self.frames_per_vehicle_cam = frames_per_vehicle_cam
+        self.normalize_embedding = normalize_embedding
+        self.return_dataframes = return_dataframes
+        self.initial_object_id_list = self.all_annotations_df.id.unique()
+        self.negative_sampling = negative_sampling
+        self.num_neg_samples = num_neg_samples
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.graph_transform = graph_transform
+
+        # This object will help computing embeddings
+        self.emb_proc = EmbeddingsProcessor(img_batch_size=embeddings_per_it,
+                                            annotations_filename=annotations_filename,
+                                            num_workers=frames_num_workers)
+
+        # Determine the number of possible iterations for this dataset
+        len_ids = len(self.initial_object_id_list)
+
+        # If num_ids_per_graph is 0 or less, then load all the objects at once
+        self.num_ids_per_graph = num_ids_per_graph if num_ids_per_graph > 0 else len_ids
+
+        # Calculate the number of possible iterations in this dataset
+        self.num_available_iterations = (len_ids//self.num_ids_per_graph) 
+        if len_ids % num_ids_per_graph:
+            self.num_available_iterations += 1
         
+        # Precompute the object ids to enable graph ids by the dataset
+        self.precomputed_id_samples = self.precompute_samples_for_graph_id(
+            self.initial_object_id_list,
+            self.num_ids_per_graph,
+            self.num_available_iterations
+            )
+        
+    def get(self, idx):
+        """ Get a sample graph data object.
+        It samples objects from the remaining object IDs, computes embeddings 
+        for the chosen objects' detections, and constructs the graph with nodes 
+        and edges, including node and edge embeddings and labels.
+
+        Parameters
+        ==========
+        self : object
+            An instance of the class.
+        idx : int
+            The index of the sample graph. This variable is ommited.
+            self.remaining_obj_ids is used to build the graphs. 
+
+        Returns
+        =========
+        Data
+            A PyTorch Geometric (PyG) Data object representing the sample graph.
+        """
+        # Retrieve object id sample using idx and filter detection dataset
+        id_sample = self.precomputed_id_samples[idx]
+        sampled_df = self.all_annotations_df[self.all_annotations_df.id.isin(id_sample)]
+
+        # If required, do not get the whole trajectories, get frames_per_vehicle_cam rows instead
+        if self.frames_per_vehicle_cam:
+            sampled_df = sampled_df.groupby(["id", "camera"]).apply(get_n_rows_per_group, 
+                                                                    self.frames_per_vehicle_cam)\
+                                                             .reset_index(drop=True)
+            
+        check_nans_df(sampled_df, "sampled_df")
+        
+        print("Computing embeddings")
+        # Compute embeddings for every detection for the chosen object ids
+        results = self.emb_proc.load_embeddings_from_filesystem(sampled_df, 
+                                                                self.frame_dir,
+                                                                fully_qualified_dir=False, 
+                                                                mode="train")
+        
+        node_embeds, reid_embeds, det_ids, frame_nums, sequence_ids, camera_ids = results
+
+        print("Generating nodes")
+        # Compute nodes embeddings and node info
+        node_df, node_embeddings, node_labels = self.setup_nodes(reid_embeds,
+                                                                 det_ids, 
+                                                                 sequence_ids, 
+                                                                 camera_ids)
+        
+        if self.normalize_embedding:
+            node_embeddings = F.normalize(node_embeddings, p=2, dim=0)
+
+        print("Generating edges")
+        # Compute edges embeddings and info
+        edge_df, edge_idx, edge_embeddings, edge_labels = self.setup_edges(node_df, node_embeddings)
+
+        print("Creating PyG graph")
+        # Generate a PyG Data object (the graph)
+        graph = Data(x=node_embeddings, 
+                     edge_index=edge_idx, 
+                     y=node_labels, 
+                     edge_attr=edge_embeddings, 
+                     edge_labels=edge_labels)
+        
+        # Do transformation if defined
+        if self.graph_transform:
+            graph = self.graph_transform(graph)
+
+        if self.return_dataframes:
+            return graph.to(self.device), node_df, edge_df, sampled_df
+        else:
+            return graph.to(self.device)
