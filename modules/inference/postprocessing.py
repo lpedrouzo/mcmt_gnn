@@ -2,8 +2,6 @@ import time
 import torch
 import numpy as np
 import networkx as nx
-import os.path as osp
-import cv2
 import pandas as pd
 from torch_scatter import scatter_add
 from .utils import intersect, torch_isin
@@ -184,14 +182,14 @@ def pruning(data, edges_out, probs, predicted_active_edges, num_cameras, directe
         for n in nodes_flow_out[0]:
 
             pos = intersect(torch.where(edge_ixs[0] == n)[0], torch.where(new_predictions == 1)[0])
-            remove_edge = pos[torch.argmin(probs[pos])]
+            remove_edge = pos[torch.argmin(probs[pos], dim=0)]
 
             edges_to_remove.append(remove_edge)
 
         for n in nodes_flow_in[0]:
 
             pos = intersect(torch.where(edge_ixs[1] == n)[0], torch.where(new_predictions == 1)[0])
-            remove_edge = pos[torch.argmin(probs[pos])]
+            remove_edge = pos[torch.argmin(probs[pos], dim=0)]
             edges_to_remove.append(remove_edge)
 
         edges_to_remove = torch.stack(edges_to_remove)
@@ -345,99 +343,6 @@ def postprocessing(num_cameras,
     return id_pred, torch.tensor(whole_edges_prediction)
 
 
-
-def load_roi(sequence_path, camera_name, sequence_name=None):
-    """ Load Region of Interest binary maps for each
-    camera.
-
-    Parameters
-    ==========
-    sequence_path: str
-        The path to the processed dataset.
-        Example: mcmt_gnn/datasets/AIC22
-    camera_name: str
-        The camera name. Ex: c001
-    sequence_name: str
-        The name of the sequence. Ex: S01
-    """
-    # If sequence_name is not provided, we assume that it is embedded in sequence_path
-    if sequence_name:
-        roi_dir = osp.join(sequence_path, "roi", sequence_name, camera_name, 'roi.jpg')
-    else:
-        roi_dir = osp.join(sequence_path, camera_name, 'roi.jpg')
-
-    if not osp.exists(roi_dir):
-        raise ValueError(f"Missing ROI image for camera {camera_name}")
-    
-    # Load grayscale image and convert to binary image
-    binary_image = cv2.imread(roi_dir, cv2.IMREAD_GRAYSCALE)
-    binary_image = (binary_image == 255)
-
-    # Transpose if scene is in portrait
-    if binary_image.shape[0] > binary_image.shape[1]:
-        binary_image = binary_image.T
-
-    return binary_image
-    
-
-def is_outside_roi(row, roi):
-    """ Check if detection is inside region of interest.
-    Return False if not.
-
-    Parameter
-    =========
-    row: 
-        The dataframe row that represents a detection and must have
-        (xmin, xmax, ymin, ymax) columns.
-    roi: np.array (w,h)
-        The region of interest image as a binary map.
-    
-    Returns
-    =========
-    boolean
-        True if detection is inside region of interest.
-        False otherwise.
-    """
-    height = roi.shape[0]
-    width = roi.shape[1]
-
-    # If out of bounds
-    if (row['xmin'] > width or row['ymin'] > height or
-        row['xmin'] < 0 or row['ymin'] < 0):
-        return True
-    
-    # roi[row['ymin'], row['xmin']] == true means it is inside roi 
-    return not roi[row['ymin'] + int(row['height']//2), row['xmin'] + int(row['width']//2)]
-
-
-def remove_non_roi(sequence_path, data_df):
-    """ Remove detections that correspond to areas
-    outside of the Region of Interest (RoI).
-
-    Parameters
-    ==========
-    data_df: pd.DataFrame
-        The predicitons dataframe.
-
-    Returns
-    ==========
-    pd.DataFrame
-        The predictions dataframe with non-roi detections
-        eliminated.
-    """
-    # Initialize outlier column as all false
-    data_df['outlier'] = False
-
-    # Check if detections are outlier and mark them
-    for i, row in data_df.iterrows():
-        roi = load_roi(sequence_path, row['camera'], row['sequence_name'])
-        if is_outside_roi(row, roi):
-            data_df.loc[i, 'outlier'] = True
-
-    # Remove outlier detections
-    return data_df[~data_df['outlier']].drop(columns=['outlier'])
-
-
 def fix_annotation_frames(gt_df, pred_df):
     """ For a ground truth dataframe and a predictions dataframe
     both resulting form the concatenation of multiple dataframes from
@@ -483,50 +388,23 @@ def fix_annotation_frames(gt_df, pred_df):
 
     return pd.concat(gt_camera_dfs), pd.concat(pred_camera_dfs)
 
-
-def filter_dets_outside_frame_bounds(det_df, frame_width, frame_height, boundary_percentage=0.1):
-    """Filter bounding boxes outside frame boundaries.
-    This function filters the rows in the input DataFrame (det_df) based on whether
-    the bounding boxes are within the specified frame boundaries. Bounding boxes that
-    fall outside the frame boundaries (with a given margin) are removed from the output.
-
-    Parameters
+def remove_dets_with_one_camera(df):
+    """Remove objects that appear in only one camera.
+    
+    parameters
     ==========
-    det_df : pandas.DataFrame
-        DataFrame containing bounding box information, including 'xmin', 'ymin',
-        'width', and 'height' columns.
-
-    frame_width : int
-        The width of the frame.
-
-    frame_height : int
-        The height of the frame.
-
-    boundary_percentage : float, optional
-        Margin as a percentage of the frame dimensions (default is 0.1, representing
-        a 10% margin).
+    df : pd.DataFrame
+        Data that should be filtered
 
     Returns
     ==========
-    pandas.DataFrame
-        A filtered DataFrame with only the rows containing bounding boxes within the
-        specified frame boundaries.
-
-    Example
-    ==========
-    >>> filtered_df = filter_dets_outside_frame_bounds(bounding_boxes_df, 1920, 1080)
+    df : pd.DataFrame
+        Filtered data with only objects that appear in 2 or more cameras.
     """
-    # Check if bounding box x-axis is inside the frame with a margin
-    cond1 = (frame_width * boundary_percentage <= det_df['xmin'] + (det_df['width'] / 2))
-    cond2 = det_df['xmin'] + (det_df['width'] / 2) <= frame_width - (frame_width * boundary_percentage)
-    idx_x = np.logical_and(cond1, cond2)
-
-    # Check if bounding box y-axis is inside the frame with a margin
-    cond1 = (frame_height * boundary_percentage <= det_df['ymin'] + det_df['height'])
-    cond2 = det_df['ymin'] + det_df['height'] <= frame_height - (frame_height * boundary_percentage)
-    idx_h = np.logical_and(cond1, cond2)
-
-    # Combine both conditions to filter the DataFrame
-    idx = np.logical_and(idx_x, idx_h)
-
-    return det_df[idx]
+    # get unique CameraId/Id combinations, then count by Id
+    cnt = df[['camera','id']].drop_duplicates()[['id']].groupby(['id']).size()
+    # keep only those Ids with a camera count > 1
+    keep = cnt[cnt > 1]
+    
+    # retrict the data to kept ids
+    return df.loc[df['id'].isin(keep.index)].reset_index(drop=True)
