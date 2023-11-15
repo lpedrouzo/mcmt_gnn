@@ -1,15 +1,15 @@
 common_params:
   sequence_path: "datasets/AIC20/"
-  sc_preds_filename: mtsc_deepsort_ssd512.txt
+  sc_preds_filename: mtsc_tc_yolo3.txt
 
 01_prep_videos_annotations:
-  original_aic_dataset_path: "datasets/raw/AIC22"
+  original_aic_dataset_path: "datasets/raw/AIC20"
   # Partitions to process
   dataset_partitions: # Partitions are folders inside the raw dataset
     - train
     - validation
   # Relative paths to annotations with respect to <sequence_path>/<camera_name>/
-  preds_path: "mtsc/mtsc_deepsort_ssd512.txt"
+  preds_path: "mtsc/mtsc_tc_yolo3.txt"
   annotations_path: "gt/gt.txt"
   roi_filename: 'roi.jpg'
   video_filename: 'vdo.avi'
@@ -23,12 +23,23 @@ common_params:
   sequences_to_process: ["S01", "S02", "S03", "S04"]
   sort_column_name: 'frame'
   gt_filename: 'gt.txt' # Type off without quotes if no gt processing needed
-  sc_preds_filename: mtsc_deepsort_ssd512.txt # Type off if not needed
+  sc_preds_filename: mtsc_tc_yolo3.txt # Type off if not needed
 
 04_filter_sc_tracking:
   validation_partition: 'S02'
-  in_sc_preds_filename:  mtsc_deepsort_ssd512.txt
-  out_sc_preds_filename: 'mtsc_deepsort_ssd512_filtered.txt'
+  in_sc_preds_filename:  mtsc_tc_yolo3.txt
+  out_sc_preds_filename: 'mtsc_tc_yolo3_filtered2.txt'
   min_bb_area : 750
-  filter_frame_bounds: True
+  filter_frame_bounds: false
   filter_roi: true
+
+05_extract_reid_embeddings:
+  max_detections_per_df: 5000
+  model_type: 'resnet'
+  model_path: 'models/reid/resnet101_ibn_a_2.pth'
+  annotations_filename: 'gt.txt'
+  train_sequences: []
+  test_sequences: ["S02"]
+  cnn_img_size: [384, 384]
+  img_batch_size: 150
+  augmentation: false
