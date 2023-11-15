@@ -168,7 +168,7 @@ def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular', 
     """
 
     # Convert tensors to numpy
-    edges_ind = data.edge_index.T.numpy()
+    edges_ind = data.cpu().edge_index.T.numpy()
     el = data.edge_labels.numpy()
 
     # If we need to pull certain edge labels
@@ -190,7 +190,8 @@ def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular', 
     # Draw nodes
     nx.draw_networkx_nodes(G, pos, 
                            node_color=data.y.tolist() if color_nodes else None, 
-                           cmap=plt.cm.gist_ncar)
+                           cmap=plt.cm.gist_ncar,
+                           label=data.y.tolist())
     nx.draw_networkx_labels(G, pos)
 
     # Draw edges
@@ -204,3 +205,25 @@ def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular', 
         edge_cmap=plt.cm.brg
     )
     plt.show()
+
+def get_n_rows_per_group(group, size):
+    """ For a pandas DataFrame group, 
+    Pick 'size' number of rows using np.linspace
+    (evenly distributed)
+
+    Parameters
+    ==========
+    group: pd.DataFrame
+        An individual group as a result of df.groupby(group_columns)
+    size: int
+        How many rows to retrieve
+    
+    Returns
+    =========
+    pd.DataFrame   
+        The group with 'size' number of rows.
+    """
+    if len(group) > size:
+        return group.loc[group.index[np.linspace(0, len(group)-1, size, dtype=int)]]
+    else:
+        return group
