@@ -280,4 +280,4 @@ class MOTMPNet(nn.Module):
             dec_edge_feats, _ = self.classifier(latent_edge_feats)
             outputs_dict['classified_edges'].append(dec_edge_feats)
 
-        return outputs_dict, latent_node_feats
+        return outputs_dict, latent_node_feats, latent_edge_feats

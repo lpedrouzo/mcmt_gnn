@@ -13,7 +13,7 @@ class TrainingEngineRGNNMulticlass(TrainingEngineAbstract):
         def train_step(engine, batch):
             self.gnn_model.train()
             self.optimizer.zero_grad()
-            output_dict, latent_nodes_feats = self.gnn_model(batch)
+            output_dict, _, _ = self.gnn_model(batch)
 
             logits = torch.cat(output_dict['classified_edges'], dim=0).to(device)
 
@@ -28,7 +28,7 @@ class TrainingEngineRGNNMulticlass(TrainingEngineAbstract):
         def validation_step(engine, batch):
             self.gnn_model.eval()
             with torch.no_grad():
-                output_dict, latent_nodes_feats = self.gnn_model(batch)
+                output_dict, _, _ = self.gnn_model(batch)
                 logits = torch.cat(output_dict['classified_edges'], dim=0).to(device)
             return F.softmax(logits, dim=1), batch.edge_labels
         return validation_step
@@ -42,7 +42,7 @@ class TrainingEngineRGNNBinary(TrainingEngineAbstract):
         def train_step(engine, batch):
             self.gnn_model.train()
             self.optimizer.zero_grad()
-            output_dict, latent_nodes_feats = self.gnn_model(batch)
+            output_dict, _, _ = self.gnn_model(batch)
 
             logits = output_dict['classified_edges'][0].squeeze()
             
@@ -57,7 +57,7 @@ class TrainingEngineRGNNBinary(TrainingEngineAbstract):
         def validation_step(engine, batch):
             self.gnn_model.eval()
             with torch.no_grad():
-                output_dict, latent_nodes_feats = self.gnn_model(batch)
+                output_dict, _, _ = self.gnn_model(batch)
                 logits = output_dict['classified_edges'][0].squeeze()
             return F.sigmoid(logits), batch.edge_labels
         return validation_step
