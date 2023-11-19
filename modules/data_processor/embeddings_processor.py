@@ -13,7 +13,6 @@ from torch.utils.data import DataLoader
 from time import time
 from tqdm import tqdm
 from functools import partial
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
 class EmbeddingsProcessor(object):
 
@@ -25,7 +24,8 @@ class EmbeddingsProcessor(object):
                  sequence_name:str=None,
                  annotations_filename:str=None,
                  annotations_sep:str=',',
-                 num_workers:int=2):
+                 num_workers:int=2,
+                 device=None):
         
         self.img_batch_size = img_batch_size
         self.sequence_path = sequence_path  
@@ -35,7 +35,8 @@ class EmbeddingsProcessor(object):
         self.num_workers = num_workers
         self.annotations_filename = annotations_filename
         self.annotations_sep = annotations_sep
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(device) if device is not None else \
+            torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 
 
     def load_embeddings_from_imgs(self, det_df, frame_dir, fully_qualified_dir, mode, augmentation=None):
@@ -129,7 +130,11 @@ class EmbeddingsProcessor(object):
         return node_embeds, reid_embeds, det_ids, frame_nums, sequence_ids, camera_ids
         
 
-    def store_embeddings(self, max_detections_per_df:int, mode:str='train', augmentation=None):
+    def store_embeddings(self, 
+                         max_detections_per_df:int, 
+                         mode:str='train', 
+                         augmentation=None,
+                         add_detection_id=False):
         """ Compute and store node and reid embeddings for all cameras in the sequence.
         This method processes frames and annotations for each camera in the sequence and computes node
         and reid embeddings for the detected objects in those frames. The embeddings are stored in separate
@@ -209,7 +214,8 @@ class EmbeddingsProcessor(object):
                                           osp.join(logs_dir_prefix, frame_camera + '.json'),
                                           max_detections_per_df,
                                           mode=mode,
-                                          augmentation=augmentation)
+                                          augmentation=augmentation,
+                                          add_detection_id=add_detection_id)
         
 
     def _store_embeddings_camera(self, det_df, 
@@ -293,8 +299,8 @@ class EmbeddingsProcessor(object):
 
             if add_detection_id:
                 # Add detection ids as first column of embeddings
-                node_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float().to(device), node_embeds), dim=1)
-                reid_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float().to(device), reid_embeds), dim=1)
+                node_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float().to(self.device), node_embeds), dim=1)
+                reid_embeds = torch.cat((torch.tensor(det_ids).view(-1, 1).float().to(self.device), reid_embeds), dim=1)
 
             # Save embeddings grouped by frame
             for frame in sub_df.frame.unique():
@@ -339,7 +345,7 @@ class EmbeddingsProcessor(object):
         for frame in os.listdir(camera_dir_prefix_frame):
 
             # Load embeddings at current frame
-            embeddings_frame = torch.load(osp.join(camera_dir_prefix_frame, frame))
+            embeddings_frame = torch.load(osp.join(camera_dir_prefix_frame, frame), map_location=torch.device(self.device))
 
             # Iterate through the frames at the current index and sum the embeddings by subject
             for embedding in embeddings_frame:
@@ -358,7 +364,7 @@ class EmbeddingsProcessor(object):
             torch.save(avg_subject_embed, osp.join(camera_dir_prefix_subject, 'obj_' + str(subject_id) + '.pt'))
 
 
-    def generate_average_embeddings_single_camera(self, remove_past_iteration_data=True):
+    def generate_average_embeddings_single_camera(self):
         """Process and generate average embeddings for all camera folders in the sequence.
         This method processes all camera folders in the specified sequence, calculates the average
         embeddings for subjects within each camera folder, and saves them in the designated output
@@ -410,19 +416,15 @@ class EmbeddingsProcessor(object):
         ============
         None
         """
-        sequence_path_prefix_ = osp.join(self.sequence_path, "embeddings", self.sequence_name, self.annotations_filename)
-
-        if get_incremental_folder(sequence_path_prefix_, next_iteration_name=False):
-            sequence_path_prefix = osp.join(sequence_path_prefix_, get_incremental_folder(sequence_path_prefix_, next_iteration_name=False))
-        else:
-            raise Exception(f"There are no embeddings stored in {sequence_path_prefix_}")
-        
-        # Remove data from past iteration if needed.
-        if remove_past_iteration_data and get_previous_folder(sequence_path_prefix_):
-            shutil.rmtree(osp.join(sequence_path_prefix_, get_previous_folder(sequence_path_prefix_)))
+        sequence_path_prefix = osp.join(self.sequence_path, "embeddings", self.sequence_name, self.annotations_filename)
 
         frames_sequence_path_prefix = osp.join(sequence_path_prefix, "node")
         subjects_sequence_path_prefix = osp.join(sequence_path_prefix, "avg")
+
+        if osp.exists(subjects_sequence_path_prefix):
+            print("Found existing stored trajectory embeddings. Deleting them and replacing them for new ones")
+            shutil.rmtree(subjects_sequence_path_prefix)
+        os.makedirs(subjects_sequence_path_prefix)
 
         camera_folders = os.listdir(frames_sequence_path_prefix)
         partial_generate_function = partial(self._generate_average_embeddings_single_camera, 
