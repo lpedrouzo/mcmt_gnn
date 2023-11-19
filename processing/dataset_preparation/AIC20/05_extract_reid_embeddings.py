@@ -47,7 +47,8 @@ if __name__ == '__main__':
         
         emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], 
                                   mode='train', 
-                                  augmentation=augmentation if task_config["augmentation"] else None)
+                                  augmentation=augmentation if task_config["augmentation"] else None,
+                                  add_detection_id=task_config["add_detection_id"])
 
     print("Extracting embeddings for testing sequences")
     for sequence_name in task_config['test_sequences']:
@@ -61,4 +62,6 @@ if __name__ == '__main__':
                                        sequence_name=sequence_name,
                                        annotations_filename=task_config['annotations_filename'])
         
-        emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], mode='test')
+        emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], 
+                                  mode='test',
+                                  add_detection_id=task_config['add_detection_id'])
