@@ -1,11 +1,5 @@
-
-import torch
 import pandas as pd
 import numpy as np
-import networkx as nx
-import matplotlib.pyplot as plt
-
-from torch_geometric.utils.convert import to_networkx
 
 def remove_unidirectional_edges(edge_idx):
     """ For an array of edge indices,
@@ -33,7 +27,7 @@ def remove_unidirectional_edges(edge_idx):
     return edge_idx[indices], indices
 
 
-def simple_negative_sampling(edge_df, edge_idx, edge_labels, num_neg_samples=None):
+def simple_negative_sampling(edge_df, edge_idx, edge_labels, negative_ratio=0.5):
     """ Perform negative sampling over the general set of edges so that they have
     the same proportion of positive-negative edges.
 
@@ -53,13 +47,16 @@ def simple_negative_sampling(edge_df, edge_idx, edge_labels, num_neg_samples=Non
     edge_labels: torch.Tensor
         Edge labels (0 or 1) indicating whether source and 
         destination nodes belong to the same object.
-
+    negative_ratio: float, optional
+        A number between 0 and 1, representing the ratio of negative
+        edges ver the total set of edges.
     Returns
     =========
     Same variables as in the Parameters, but sampled.
     """
     indices = np.array([])
     num_total_edges = len(edge_labels)
+    num_neg_edges = negative_ratio*num_total_edges
     all_idx = np.arange(num_total_edges)
 
     # Getting positive edge indices and labels
@@ -71,7 +68,7 @@ def simple_negative_sampling(edge_df, edge_idx, edge_labels, num_neg_samples=Non
     non_match_idx = all_idx[edge_labels == 0]
 
     # Retrieve indices for a sample of those negative edges (negative sampling)
-    indices = np.random.choice(non_match_idx, size=num_neg_samples or num_pos, replace=False) 
+    indices = np.random.choice(non_match_idx, size=num_neg_edges, replace=False) 
     
     # Use the index to retrieve the negative samples
     edge_idx_neg = edge_idx[indices]
@@ -143,69 +140,6 @@ def stratified_negative_sampling(edge_df, edge_idx, edge_labels):
     return edge_df, edge_idx, edge_labels
 
 
-def draw_pyg_network(data, class_ids=None, color_nodes=True, layout='circular', undirected=True):
-    """ Visualize a PyTorch Geometric graph using NetworkX and Matplotlib.
-    This function creates a visual representation of the input graph using NetworkX and Matplotlib. It supports
-    optional filtering of edges based on their labels and node coloring based on node classes.
-
-    - If 'class_ids' is provided, only edges with labels in 'class_ids' will be displayed.
-    - If 'color_nodes' is set to True, nodes will be colored based on their class labels using a color map.
-
-    Parameters
-    ==========
-    data : torch_geometric.data.Data
-        The PyTorch Geometric data object representing the graph.
-    class_ids : list or None, optional
-        List of edge labels to include (if specified). Default is None.
-    color_nodes : bool, optional
-        Whether to color nodes based on their class (if available). Default is True.
-    layout : str, optional
-        Layout algorithm for node positioning ('circular' or 'spring'). Default is 'circular'.
-
-    Returns
-    ==========
-    None
-    """
-
-    # Convert tensors to numpy
-    edges_ind = data.cpu().edge_index.T.numpy()
-    el = data.edge_labels.numpy()
-
-    # If we need to pull certain edge labels
-    if class_ids:
-        edges_ind = edges_ind[np.isin(el,class_ids)]
-        el = el[np.isin(el, class_ids)]
-
-    G = to_networkx(data, to_undirected=undirected)
-
-    # Define colormap
-    cmap=plt.cm.viridis(np.linspace(0,1,G.number_of_edges()))
-
-    # Use the selected layout
-    if layout == 'spring':
-        pos = nx.spring_layout(G)
-    else:
-        pos = nx.circular_layout(G)
-
-    # Draw nodes
-    nx.draw_networkx_nodes(G, pos, 
-                           node_color=data.y.tolist() if color_nodes else None, 
-                           cmap=plt.cm.gist_ncar,
-                           label=data.y.tolist())
-    nx.draw_networkx_labels(G, pos)
-
-    # Draw edges
-    nx.draw_networkx_edges(
-        G,
-        pos,
-        edgelist=edges_ind,
-        width=1,
-        alpha=0.5,
-        edge_color=el,
-        edge_cmap=plt.cm.brg
-    )
-    plt.show()
-
 def get_n_rows_per_group(group, size):
     """ For a pandas DataFrame group, 
     Pick 'size' number of rows using np.linspace
@@ -227,3 +161,60 @@ def get_n_rows_per_group(group, size):
         return group.loc[group.index[np.linspace(0, len(group)-1, size, dtype=int)]]
     else:
         return group
+    
+
+def precompute_samples_for_graph_id(initial_id_list, num_ids_per_graph, num_iterations):
+        """ Computes
+
+        Parameters
+        ==========
+        None
+
+        Returns 
+        ==========
+        None
+        """
+        print("Sampling object ids")
+        precomputed_id_samples = []
+        remaining_obj_ids = initial_id_list
+
+        for _ in range(num_iterations):
+            sampled_ids, remaining_obj_ids = sample_obj_ids(remaining_obj_ids,
+                                                            num_ids_per_graph)
+            precomputed_id_samples.append(sampled_ids)
+        return precomputed_id_samples
+
+
+def sample_obj_ids(unique_obj_ids, num_ids):
+    """ Sample a specified number of unique object IDs from a list of unique IDs.
+
+    Parameters
+    ----------
+    self : object
+        An instance of the class.
+    det_df : pd.DataFrame
+        A DataFrame containing detection information.
+    unique_obj_ids : list
+        A list of unique object IDs.
+    num_ids : int
+        The number of unique object IDs to sample.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing only the sampled object IDs.
+    list
+        A list of remaining unique object IDs after sampling.
+    """
+    if len(unique_obj_ids) > num_ids:
+        # Getting unique IDs and taking a sample of them
+        sampled_obj_ids = np.random.choice(unique_obj_ids, size=num_ids, replace=False)
+
+        # Getting the remaining IDs for further iterations
+        remaining_obj_ids = [id for id in unique_obj_ids if id not in sampled_obj_ids]
+    else:
+        sampled_obj_ids = unique_obj_ids
+        remaining_obj_ids = []
+        
+    # Return the DataFrame with only the sampled objects and the list of remaining IDs
+    return sampled_obj_ids, remaining_obj_ids
