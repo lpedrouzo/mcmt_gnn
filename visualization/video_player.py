@@ -6,7 +6,7 @@ sys.path.insert(1, osp.abspath('.'))
 import yaml
 import pandas as pd
 import numpy as np
-from modules.inference.postprocessing import load_roi
+from modules.inference.preprocessing import load_roi
 
 class VideoPlayer:
     def __init__(self, frames_dir, bbox_dir, annotations_filename, video_filename):
