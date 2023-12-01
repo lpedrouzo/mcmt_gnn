@@ -1,5 +1,5 @@
 common_params:
-  sequence_path: "datasets/AIC20/"
+  sequence_path: "C:/Users/mejia/Documents/tfm/mcmt_gnn/datasets/AIC20/"
   sc_preds_filename: mtsc_tc_yolo3.txt
 
 01_prep_videos_annotations:
@@ -20,15 +20,15 @@ common_params:
   video_format: '.avi'
 
 03_preprocess_annotations:
-  sequences_to_process: ["S01", "S02", "S03", "S04"]
+  sequences_to_process: ["S02"]
   sort_column_name: 'frame'
-  gt_filename: 'gt.txt' # Type off without quotes if no gt processing needed
-  sc_preds_filename: mtsc_tc_yolo3.txt # Type off if not needed
+  gt_filename: off # Type off without quotes if no gt processing needed
+  sc_preds_filename: mtsc_tnt_ssd512.txt # Type off if not needed
 
 04_filter_sc_tracking:
   validation_partition: 'S02'
-  in_sc_preds_filename:  mtsc_tc_yolo3.txt
-  out_sc_preds_filename: 'mtsc_tc_yolo3_filtered2.txt'
+  in_sc_preds_filename:  mtsc_tnt_ssd512.txt
+  out_sc_preds_filename: 'mtsc_tnt_ssd512_roi_filtered.txt'
   min_bb_area : 750
   filter_frame_bounds: false
   filter_roi: true
@@ -37,9 +37,15 @@ common_params:
   max_detections_per_df: 5000
   model_type: 'resnet'
   model_path: 'models/reid/resnet101_ibn_a_2.pth'
-  annotations_filename: 'gt.txt'
+  annotations_filename: 'mtsc_tnt_ssd512_roi_filtered.txt'
   train_sequences: []
   test_sequences: ["S02"]
   cnn_img_size: [384, 384]
   img_batch_size: 150
   augmentation: false
+  add_detection_id: true
+
+05a_extract_trajectory_embeddings:
+  annotations_filename: 'mtsc_tnt_ssd512_roi_filtered.txt'
+  train_sequences: []
+  test_sequences: ["S02"]
