@@ -56,7 +56,6 @@ def simple_negative_sampling(edge_df, edge_idx, edge_labels, negative_ratio=0.5)
     """
     indices = np.array([])
     num_total_edges = len(edge_labels)
-    num_neg_edges = negative_ratio*num_total_edges
     all_idx = np.arange(num_total_edges)
 
     # Getting positive edge indices and labels
@@ -66,6 +65,10 @@ def simple_negative_sampling(edge_df, edge_idx, edge_labels, negative_ratio=0.5)
 
     num_pos = edge_labels.sum()
     non_match_idx = all_idx[edge_labels == 0]
+
+    num_neg_edges = int(negative_ratio*num_total_edges)
+    if num_neg_edges > len(non_match_idx):
+        num_neg_edges = len(non_match_idx)
 
     # Retrieve indices for a sample of those negative edges (negative sampling)
     indices = np.random.choice(non_match_idx, size=num_neg_edges, replace=False) 
@@ -174,7 +177,7 @@ def precompute_samples_for_graph_id(initial_id_list, num_ids_per_graph, num_iter
         ==========
         None
         """
-        print("Sampling object ids")
+        #print("Sampling object ids")
         precomputed_id_samples = []
         remaining_obj_ids = initial_id_list
 
