@@ -8,11 +8,10 @@ import pandas as pd
 import cv2
 import motmetrics as mm
 from datetime import datetime
-from ignite.metrics import Precision, Recall, Accuracy, Loss
-from ignite.engine import Engine, Events
-from .postprocessing import postprocessing, fix_annotation_frames, remove_non_roi, filter_dets_outside_frame_bounds
+from .postprocessing import postprocessing, fix_annotation_frames, remove_dets_with_one_camera
+from .preprocessing import remove_non_roi, filter_dets_outside_frame_bounds
 
-class InferenceModule(nn.Module):
+class InferenceModule:
     """ A class to perform inference on a given sequence
     and extra methods to generate  and evaluate multi-camera tracks
 
@@ -23,21 +22,67 @@ class InferenceModule(nn.Module):
     graph, node_df, edge_df, sampled_df = dataset[0]
 
     inf_module = InferenceModule(model, 
+                                 graph,
+                                 node_df,
                                  sampled_df, 
-                                 "/mcmt_gnn/datasets/AIC20")
-    inf_module.predict_tracks((graph, node_df, edge_df))
+                                 "/mcmt_gnn/datasets/AIC20",
+                                 device=torch.device('cuda'))
+    inf_module.predict_tracks()
     """
-    def __init__(self, model, data_df, sequence_path, directed_graph=True, remove_unidirectional=False):
-        super().__init__()
+    def __init__(self, 
+                 model, 
+                 data,
+                 node_df,
+                 data_df, 
+                 sequence_path, 
+                 gt_df=None,
+                 device=torch.device('cpu')):
+        """ Constructor
+
+        Parameters
+        ==========
+        model: torch.nn.Module
+            A graph neural network implemented in pytorch
+            that uses (x, edge_index, edge_attr, y, edge_labels)
+            as input and generates predictions for the edges
+        data: torch_geometric.data.Data
+            A graph to feed the GNN model.
+        node_df: pd.DataFrame
+            The information about nodes in the graphs. It must have
+            the columns (node_id, object_id, camera)
+            This dataframe is produced after using one of the custom PyG datasets
+            in this repository.
+        data_df: pd.DataFrame
+            A dataframe with consolidated tracking annotations
+            Requires columns (id, frame, xmin, xmax, ymin, ymax, width, height, camera)
+            This should be a single dataframe with information from all
+            the sequences that are needed for inference.
+        sequence_path: string
+            Path to the dataset folder.
+        gt_df: pd.DataFrame, optional
+            A GROUND TRUTH dataframe with consolidated tracking annotations
+            Requires columns (id, frame, xmin, xmax, ymin, ymax, width, height, camera)
+            This should be a single dataframe with information from all
+            the sequences that are needed for inference.
+            **This dataframe MUST be provided if the purpose is to evaluate
+            tracking performance**
+        device: torch.device, optional
+            The device to use for computations.
+        """
         self.model = model
         self.model.eval()
+        self.data = data
+        self.node_df = node_df
         self.data_df = data_df
+        self.gt_df = gt_df
         self.num_cameras = len(data_df.camera.unique())
         self.sequence_path = sequence_path
-        self.directed_graph = directed_graph
-        self.remove_unidirectional = remove_unidirectional
+        self.device = device
         
-    def forward(self, data):
+    def predict_edges(self, directed_graph, 
+                      remove_unidirectional=False, 
+                      allow_pruning=True, 
+                      allow_spliting=True):
         """ Generate estimations of graph connectivity
         and post-process to obtain clusters. Each cluster
         represent a single object, and each node within the cluster
@@ -45,9 +90,13 @@ class InferenceModule(nn.Module):
 
         Parameters
         ==========
-        data: torch_geometric.data.Data
-            A graph to feed the model
-        
+        directed_graph: bool
+            If true, then edges [u, v] != [v, u]. The graph will be 
+            treated as directed.
+        remove_unidirectional: bool, optional
+            If true, it removes edges with just one direction in 
+            the postprocessing.
+
         Returns
         ==========
         id_pred: torch.tensor
@@ -58,90 +107,113 @@ class InferenceModule(nn.Module):
         """
         with torch.no_grad():
             # Output predictions from GNN            
-            output_dict, _ = self.model(data)
-            logits = torch.cat(output_dict['classified_edges'], dim=0)
+            output_dict, _, _ = self.model(self.data.to(self.device))
+            logits = output_dict['classified_edges'][-1]
             preds_prob = F.softmax(logits, dim=1).cpu()
             predictions = torch.argmax(logits, dim=1).cpu()
 
-            edge_list = data.edge_index.cpu().numpy()
+            edge_list = self.data.edge_index.cpu().numpy()
 
             # Connected components output
             id_pred, predictions = postprocessing(self.num_cameras, 
                                                   preds_prob,
                                                   predictions,
                                                   edge_list,
-                                                  data.cpu(),
-                                                  self.directed_graph,
-                                                  self.remove_unidirectional)
-        return id_pred, predictions
+                                                  self.data.cpu(),
+                                                  directed_graph,
+                                                  remove_unidirectional,
+                                                  allow_pruning,
+                                                  allow_spliting)
+        return id_pred, predictions, preds_prob
     
-    def predict_tracks(self, batch, 
-                       frame_width=None, 
-                       frame_height=None, 
+    def predict_tracks(self, 
+                       frame_width, 
+                       frame_height, 
+                       directed_graph,
+                       allow_pruning,
+                       allow_spliting,
+                       remove_unidirectional=False,
                        filter_frame_bounds=True, 
-                       filter_roi=True):
+                       filter_roi=True,
+                       filter_single_camera_nodes=True):
         """ Generate cluster predictions from the GNN and 
         cluster components and generate a detection file 
         with the appropriate object ids.
 
         Parameters
         ==========
-        batch: tuple
-            A tuple that contains a graph (torch_geometric.data.Data),
-            a DataFrame from nodes (columns: id, camera, sequence),
-            and a DataFrame from edges (columns: src_node_id, dst_node_id, 
-            src_obj_id, dst_obj_id, edge_labels)
-        filter_roi: boolean
+        frame_width: int
+            The frame width.
+        frame_height: int
+            The frame height.
+        filter_frame_bounds: bool
+            If True, then the detections in the annotations dataframe 
+            that go beyond the frame boundaries will be filtered out.
+        filter_roi: bool
             Whether to filter using region of interest or not.
-        
+        filter_single_camera_nodes: bool
+            If true, then IDs that only appears on one camera will be removed
+            from detection dataframe (self.data_df)
+
         Returns
         ==========
         data_df: pd.DataFrame
-            The predictions file
+            The resulting predictions file
+        id_pred: np.array
+            A 1D array with the predicted vehicle IDs
+            that result from the connected components
+        edge_pred: torch.tensor
+            A 1D tensor with the predictions (positive/negative edges)
+        preds_prob: torch.tensor
+            A 2D tensor with the same length as edge_pred but with two columns
+            The first is the probability of class 0, the second is the probability of \
+            class 1.
         """
-        # Batches from our custom datasets return these vars
-        data, node_df, _ = batch
 
         # Predict ids from CCs
-        id_pred, _ = self.forward(data)
+        id_pred, edge_pred, preds_prob = self.predict_edges(directed_graph, 
+                                                            remove_unidirectional, 
+                                                            allow_pruning, 
+                                                            allow_spliting)
 
         # Add old IDs as separate column to inspect
         self.data_df['id_old'] = self.data_df.id
 
         # Generate tracking dataframe
-        for n in range(len(data.x)):
+        for n in range(len(self.data.x)):
             id_new = int(id_pred[n])
-            cam_id = node_df.camera[n]
-            id_old = node_df.object_id[n]
+            cam_id = self.node_df.camera[n]
+            id_old = self.node_df.object_id[n]
 
             # Assign the labels from the connected components to the detections df
-            self.data_df.loc[(self.data_df['id'] == id_old) & 
+            self.data_df.loc[(self.data_df['id_old'] == id_old) & 
                             (self.data_df['camera'] == cam_id),'id'] = id_new
 
         # If required, remove detections that go beyond the frame limits
         if filter_frame_bounds:
-            self.data_df = filter_dets_outside_frame_bounds(self.data_df, frame_width, frame_height)
+            self.data_df = filter_dets_outside_frame_bounds(self.data_df, 
+                                                            frame_width, 
+                                                            frame_height)
+            if self.gt_df is not None: 
+                self.gt_df = filter_dets_outside_frame_bounds(self.gt_df, 
+                                                              frame_width, 
+                                                              frame_height)
+        
+        # This is only for the single camera tracking estimates, not gorund truth
+        if filter_single_camera_nodes:
+            self.data_df = remove_dets_with_one_camera(self.data_df)
 
-        # If required, remove detections outside region of interest
-        if filter_roi:
-            self.data_df = remove_non_roi(self.sequence_path, self.data_df)
-
-        return self.data_df
+        return self.data_df, id_pred, edge_pred, preds_prob
     
-    def evaluate_mtmc(self, gt_df, th):
+    def evaluate_mtmc(self, th):
         """ Use Pymotmetrics to compute multi-camera
         multi-target performance metrics (idf, idp, idf1)
         
         Parameters
         ==========
-        gt_df: pd.DataFrame
-            The ground truth dataframe with detections from 
-            all of the cameras in one single object.
-            Both gt_df and the dataframe passed in the constructor of this
-            object must have the following columns:
-            ('frame', 'id', 'xmin', 'ymin', 'width', 'height')
         th: float
-            Threshold
+            Intersection over Union (IoU) threshold
+            for evaluation of performance
 
         Returns
         =========
@@ -156,9 +228,14 @@ class InferenceModule(nn.Module):
         this function to keep the main scripts clean and following our own 
         convention ('frame', 'id', 'xmin', 'ymin', 'width', 'height').
         """
+        assert self.gt_df is not None, \
+            "You must provide a grond truth dataframe to the constructor."
+        
+        self.data_df.camera = self.data_df.camera.apply(lambda cam: int(cam.replace('c', '')))
+        self.gt_df.camera = self.gt_df.camera.apply(lambda cam: int(cam.replace('c', '')))
 
         # Avoid colisions in the frame index
-        gt_df, pred_df = fix_annotation_frames(gt_df, self.data_df)
+        gt_df, pred_df = fix_annotation_frames(self.gt_df, self.data_df)
 
         # Setting column names as motmetrics requires it
         gt_df = gt_df.rename(columns={'frame': 'FrameId',
@@ -186,78 +263,3 @@ class InferenceModule(nn.Module):
         summary = mh.compute(accumulator, metrics=metrics, name='MultiCam')
 
         return summary
-            
-
-class InferenceEngineAbstract(object):
-    def __init__(self, model, val_loader, results_path_prefix, metrics):
-        self.results_path_prefix = osp.join(results_path_prefix, "metrics_inferece")
-        self.results_path = osp.join(self.results_path_prefix, "results_metrics.csv")
-        self.val_loader = val_loader
-        self.model = model
-        self.metrics = {}
-        os.makedirs(self.results_path_prefix, exist_ok=True)
-        self.setup_validation(metrics)
-
-    def setup_validation(self, metrics):
-        """Set up the validation process.
-
-        Parameters:
-        ===========
-        metrics : list
-            List of metric names to be used for evaluation.
-        """
- 
-        # Setting up evaluator engines
-        validation_step = self.setup_validation_step()
-        self.val_evaluator = Engine(validation_step)
-        self.setup_metrics(metrics)
-
-
-    def setup_metrics(self, metrics):
-        """Set up evaluation metrics.
-        This function uses the exact strings to instantiate the metric class.
-        Valid values are ['Precision', 'Recall', 'Accuracy'] case sensitive.
-
-        Parameters:
-        ===========
-        metrics : list
-            List of metric names to be used for evaluation.
-        """
-
-        # Converting strings into ignite.metrics objects and storing in dictionary
-        for metric in metrics:
-            self.metrics[metric] = getattr(sys.modules[__name__], metric)()
-
-        for name, metric in self.metrics.items():
-            metric.attach(self.val_evaluator, name)
-
-        # Preparing empty dataframes for logging
-        if os.path.exists(self.results_path):
-            self.val_metrics_df = pd.read_csv(self.results_path)
-        else:
-            self.val_metrics_df = pd.DataFrame(columns=["timestamp", *metrics])
-
-
-    def run_validation(self):
-        
-        # Run the evaluator through the
-        self.val_evaluator.run(self.val_loader)
-        metrics = self.val_evaluator.state.metrics
-
-        # Log current metrics
-        row = {"timestamp": datetime.now().strftime('%m/%d/%Y')}
-        msg = "Inference Results - "
-        for name, _ in self.metrics.items():
-            msg += f"{name}: {metrics[name]} - "
-            row[name] = metrics[name]
-        print(msg)
-
-        # This result logs will besaved to csv once trainer.run() is finished
-        row_df = pd.DataFrame([row], columns=self.val_metrics_df.columns)
-        self.val_metrics_df = pd.concat([self.val_metrics_df, row_df], ignore_index=True)  
-
-        # Save results
-        self.val_metrics_df.to_csv(self.results_path)
-
-    def setup_validation_step(self):
-        raise NotImplementedError("You must override this function.")
