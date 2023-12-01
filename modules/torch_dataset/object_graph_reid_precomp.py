@@ -87,7 +87,7 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         node_df["node_id"] = node_df.index
         node_embeddings = torch.stack([torch.load(filepath) for filepath in node_df.embeddings_path.values]).to(self.device)
         node_labels = torch.tensor(node_df.object_id.values).to(self.device)
-        print(f"Length of node_df {len(node_df)}")
+        #print(f"Length of node_df {len(node_df)}")
 
         return node_df, node_embeddings, node_labels
 
@@ -211,7 +211,7 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         node_dfs, node_embeddings_list, node_labels_list = [], [], []
 
         for sequence_name in self.sequence_names:
-            print(f"Generating nodes for {sequence_name}")
+            #print(f"Generating nodes for {sequence_name}")
 
             # Set the path prefix with the correct epoch folder
             camera_folders_prefix = osp.join(self.sequence_path_prefix, 
@@ -244,13 +244,16 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         if len_ids % self.num_ids_per_graph:
             self.num_available_iterations += 1
 
+        self.on_epoch_end()
+    
+    def on_epoch_end(self):
         # Precompute the object ids to enable graph ids by the dataset
         self.precomputed_id_samples = precompute_samples_for_graph_id(
             self.initial_object_id_list,
             self.num_ids_per_graph,
             self.num_available_iterations
             )
-        
+    
         
     def len(self):
         """Determine the number of available steps in this dataset"""
@@ -281,11 +284,11 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         sampled_node_embeddings = self.node_embeddings[self.node_df.object_id.isin(id_sample)]
         sampled_node_labels = self.node_labels[self.node_df.object_id.isin(id_sample)]
 
-        print("Generating edges")                                     
+        #print("Generating edges")                                     
         # Loading edge information, embeddings and labels for all cameras 
         edge_df, edge_idx, edge_embeddings, edge_labels = self.setup_edges(sampled_node_df, sampled_node_embeddings)
 
-        print("Creating PyG graph")
+        #print("Creating PyG graph")
         graph = Data(x=sampled_node_embeddings, 
                      edge_index=edge_idx, 
                      y=sampled_node_labels, 
