@@ -288,7 +288,9 @@ def postprocessing(num_cameras,
                    edge_list, 
                    data,
                    directed_graph=True,
-                   remove_unidirectional=False):
+                   remove_unidirectional=False,
+                   allow_pruning=True,
+                   allow_spliting=True):
     """ Perform postprocessing procedure on the set of edge predictions.
     The procedures follow (pruning -> connected_components -> splitting -> connected components)
     """
@@ -300,14 +302,15 @@ def postprocessing(num_cameras,
                                                                                   edge_list)
     
     # Pruning edges that violates num_camera contraints
-    predictions_r = pruning(data, 
-                            whole_edges_prediction.view(-1), 
-                            preds_prob[:,1], 
-                            pred_active_edges, 
-                            num_cameras, directed_graph)
+    if allow_pruning:
+        predictions_r = pruning(data, 
+                                whole_edges_prediction.view(-1), 
+                                preds_prob[:,1], 
+                                pred_active_edges, 
+                                num_cameras, directed_graph)
 
-    if len(predictions_r):
-        whole_edges_prediction = predictions_r
+        if len(predictions_r):
+            whole_edges_prediction = predictions_r
     
     # Get set of predicted active edges that go both ways (no single direction)
     whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, 
@@ -323,14 +326,15 @@ def postprocessing(num_cameras,
     id_pred, _ = connected_componnets(G, data.num_nodes, directed_graph)
 
     # Perform splitting for conencted components that present bridges
-    whole_edges_prediction = splitting(id_pred, 
-                                       whole_edges_prediction, 
-                                       preds_prob[:,1], 
-                                       edge_list, 
-                                       data.num_nodes, 
-                                       pred_active_edges,
-                                       num_cameras, 
-                                       directed_graph)
+    if allow_spliting:
+        whole_edges_prediction = splitting(id_pred, 
+                                        whole_edges_prediction, 
+                                        preds_prob[:,1], 
+                                        edge_list, 
+                                        data.num_nodes, 
+                                        pred_active_edges,
+                                        num_cameras, 
+                                        directed_graph)
 
     # Get initial set of predicted active edges
     whole_edges_prediction, pred_active_edges = get_active_edges(edge_list, 
@@ -367,6 +371,8 @@ def fix_annotation_frames(gt_df, pred_df):
     gt_cameras = gt_df.camera.unique()
     pred_cameras = pred_df.camera.unique()
 
+    print(gt_cameras, pred_cameras)
+    
     gt_camera_dfs = []
     pred_camera_dfs = []
     max_frame = 0 
