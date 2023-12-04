@@ -56,60 +56,6 @@ def load_config(config_path:str, task_name:str):
     return common_config, task_config
 
 
-def get_incremental_folder(path, next_iteration_name=False):
-    """ Computes the folder name for the next Epoch based on 
-    the indices of existing folders in the filesystem.
-
-    Parameters
-    ==========
-    path: str
-        The path where the incrementally named folders will be.
-    next_iteration_name: bool
-        Whether to return the folder for the next iteration or the current iteration.
-        Example: if next_iteration_name == True -> return epoch_{i + 1} else epoch_{i}
-
-    Returns
-    ==========
-    str
-        The name of the folder for the next iteration.
-    
-    """
-    folders = os.listdir(path)
-    if len(folders):
-        epoch_indices = [int(folder.split("_")[-1]) for folder in folders if folder.startswith("epoch_")]
-
-        if len(epoch_indices):
-            return f"epoch_{max(epoch_indices) + (1 if next_iteration_name else 0)}"
-
-    return "epoch_0" if next_iteration_name else None
-
-
-def get_previous_folder(path):
-    """Computes the folder name from the second-to-last Epoch based on 
-    the indices of existing folders in the filesystem.
-
-    Parameters
-    ==========
-    path: str
-        The path where the incrementally named folders will be.
-
-    Returns
-    ==========
-    str
-        The name of the folder from the previous iteration.
-    """
-    folders = os.listdir(path)
-    if len(folders):
-        epoch_indices = [int(folder.split("_")[-1]) for folder in folders if folder.startswith("epoch_")]
-
-        # There needs to exist more than one folder to retrieve the next to last one
-        if len(epoch_indices) > 1:
-            return f"epoch_{max(epoch_indices) - 1}"
-
-    # If there are no folders, or one folder return None
-    return None
-
-
 def check_nans_df(df, message):
     """ Check if there are NaN values in the DataFrame
     """
@@ -125,3 +71,39 @@ def check_nans_tensor(tnsr, message):
 
     if has_nan:
         raise Exception(f"The tensor has NaN values. {message}")
+
+
+def generate_samples_for_galleries(annotations_df, frames_per_gallery):
+    """ Generate a sample of frame numbers for each vehicle ID
+    in the annotations dataframe to be used in the galleries.
+    
+    Parameters
+    ==========
+    annotations_df: pd.DataFrame
+        A dataframe with the single camera annotations. Must have the columns
+        ("frame", "id")
+    frames_per_gallery: int
+        The number of frames to have in each gallery.
+    
+    Returns
+    ==========
+    frame_samples_per_id: Dict
+        The keys correspond to the vehicle IDs and the values
+        correspond to a list of frame ids (samples) per vehicle.
+    """
+    frame_samples_per_id = {}
+    # Get a random sample of frames per subject id
+    unique_ids = annotations_df["id"].unique()
+    for id in unique_ids:
+        frame_idx_in_id = annotations_df.loc[annotations_df.id == id, "frame"]
+        if len(frame_idx_in_id) > frames_per_gallery:
+            # sample without replacement 
+            frame_sample_per_id = annotations_df.loc[annotations_df.id == id, "frame"]\
+                                                .sample(frames_per_gallery, replace=False).to_list()
+        else:
+            # Get the whole set of IDs and if neccesary, sample the remaining IDs
+            frame_sample_per_id = annotations_df.loc[annotations_df.id == id, "frame"].to_list()
+
+        # Finally save those samples on a dictionary
+        frame_samples_per_id[id] = frame_sample_per_id
+    return frame_samples_per_id

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import multiprocessing
 
-from .utils import try_loading_logs, get_incremental_folder, get_previous_folder
+from .utils import try_loading_logs, generate_samples_for_galleries
 from ..torch_dataset.bounding_box_dataset import BoundingBoxDataset
 from ..torch_dataset.reid_embedding_dataset import REIDEmbeddingDataset
 from torch.utils.data import DataLoader
@@ -364,6 +364,75 @@ class EmbeddingsProcessor(object):
             torch.save(avg_subject_embed, osp.join(camera_dir_prefix_subject, 'obj_' + str(subject_id) + '.pt'))
 
 
+    def _generate_embeddings_gallery_single_camera(self, 
+                                                    input_path_prefix, 
+                                                    output_path_prefix, 
+                                                    frames_per_gallery,
+                                                    camera_folder):
+        """Processes the embeddings for each frame within the specified camera folder,
+        creates a gallery  subject, composed of frames_per_gallery and saves them individually in the
+        output directory.
+
+        Parameters
+        ===========
+        input_path_prefix : str
+            The path to the input directory containing frame-wise embeddings.
+        output_path_prefix : str
+            The path to the output directory where average embeddings will be saved.
+        frames_per_gallery: int
+            The number of frames in each gallery.
+        camera_folder : str
+            The name of the camera folder being processed.
+        
+        Returns
+        ===========
+        None
+        """
+        camera_dir_prefix_frame = osp.join(input_path_prefix, camera_folder)
+        camera_dir_prefix_subject = osp.join(output_path_prefix, camera_folder)
+        os.makedirs(camera_dir_prefix_subject)
+
+        # Read annotations for the current camera folder
+        annotations_path = osp.join(self.sequence_path, "annotations", self.sequence_name, 
+                                    camera_folder, self.annotations_filename)
+        annotations_df = pd.read_csv(annotations_path)
+
+        frame_samples_per_id = generate_samples_for_galleries(annotations_df, frames_per_gallery)
+
+        subject_gallery_dict = {}
+        
+        for frame in os.listdir(camera_dir_prefix_frame):
+
+            # Load embeddings at current frame
+            embeddings_frame = torch.load(osp.join(camera_dir_prefix_frame, frame), map_location=torch.device(self.device))
+
+            # Iterate through the frames at the current index and sum the embeddings by subject
+            for embedding in embeddings_frame:
+                subject_id = int(embedding[0].cpu())
+
+                if int(frame.replace(".pt", "")) in frame_samples_per_id[subject_id]:
+                    if subject_id not in subject_gallery_dict:
+                        subject_gallery_dict[subject_id] = [embedding[1:]]
+                    else:
+                        subject_gallery_dict[subject_id].append(embedding[1:])
+
+        # For every subject, save the gallery to filesystem
+        for subject_id in subject_gallery_dict:
+            gallery_len = len(subject_gallery_dict[subject_id])
+
+            subject_gallery = torch.stack(subject_gallery_dict[subject_id])
+            print(gallery_len, subject_gallery.shape)
+            if gallery_len < frames_per_gallery:
+                tile_factor = int(np.ceil(frames_per_gallery/gallery_len))
+                subject_gallery = subject_gallery.repeat((tile_factor, 1))[:frames_per_gallery]
+                print(subject_gallery.shape)
+
+            print(f"New Len {len(subject_gallery)}")
+
+            torch.save(subject_gallery, 
+                       osp.join(camera_dir_prefix_subject, 'obj_' + str(subject_id) + '.pt'))
+
+
     def generate_average_embeddings_single_camera(self):
         """Process and generate average embeddings for all camera folders in the sequence.
         This method processes all camera folders in the specified sequence, calculates the average
@@ -409,8 +478,7 @@ class EmbeddingsProcessor(object):
 
         Parameters
         ============
-        remove_past_iteration_data: boolean
-            If true, comptued emebddings from past iteration will be removed, to save space.
+        None
 
         Returns
         ============
@@ -430,6 +498,43 @@ class EmbeddingsProcessor(object):
         partial_generate_function = partial(self._generate_average_embeddings_single_camera, 
                                             frames_sequence_path_prefix, 
                                             subjects_sequence_path_prefix)
+        
+        # Use multiprocessing to parallelize processing camera folders
+        pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+        pool.map(partial_generate_function, camera_folders)
+        pool.close()
+        pool.join()
+    
+    def generate_embedding_galleries_single_camera(self, frames_per_gallery):
+        """ Process and generate galleries of embeddings for all camera folders in the sequence.
+        Multiprocessing to parallelize the processing of camera folders is used.
+        The structured is similar as the one described in the function
+        generate_average_embeddings_single_camera, except that it uses "gallery" instead of "avg".
+
+        Parameters
+        ==========
+        frames_per_gallery: int
+            The number of frames in each gallery.
+        
+        Returns
+        ==========
+        None
+        """
+        sequence_path_prefix = osp.join(self.sequence_path, "embeddings", self.sequence_name, self.annotations_filename)
+
+        frames_sequence_path_prefix = osp.join(sequence_path_prefix, "node")
+        subjects_sequence_path_prefix = osp.join(sequence_path_prefix, "gallery")
+
+        if osp.exists(subjects_sequence_path_prefix):
+            print("Found existing stored trajectory embeddings. Deleting them and replacing them for new ones")
+            shutil.rmtree(subjects_sequence_path_prefix)
+        os.makedirs(subjects_sequence_path_prefix)
+
+        camera_folders = os.listdir(frames_sequence_path_prefix)
+        partial_generate_function = partial(self._generate_embeddings_gallery_single_camera, 
+                                            frames_sequence_path_prefix, 
+                                            subjects_sequence_path_prefix,
+                                            frames_per_gallery)
         
         # Use multiprocessing to parallelize processing camera folders
         pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
