@@ -18,13 +18,15 @@ from torch.nn import CrossEntropyLoss
 from torch.optim.lr_scheduler import StepLR, LambdaLR
 
 from models.mcmt.rgnn import MOTMPNet
+from models.mcmt.gallery_rgnn import GalleryMOTMPNet
 from modules.torch_dataset.object_graph_reid_precomp import ObjectGraphREIDPrecompDataset
+from modules.torch_dataset.object_graph_gallery_precomp import ObjectGraphGalleryPrecompDataset
 from modules.tuning.epoch_functions import test_func_multiclass, train_func
 from modules.torch_trainer.custom_loss import CECustom
 from modules.plots import tsne2d_scatterplot, draw_pyg_network, plot_tsne_samples, plot_histogram_wrapper
 from modules.inference.inference_module import InferenceModule
 from modules.data_processor.annotations_processor import AnnotationsProcessor
-from modules.tuning.config_update import update_gnn_config, get_or_create_experiment, warmup_lr
+from modules.tuning.trial_helpers import update_gnn_config, get_or_create_experiment, warmup_lr
 
 
 def trainable_function(task_config, 
@@ -75,22 +77,28 @@ def trainable_function(task_config,
         "test_sequence": test_sequence
         })
 
-        # Instantiation of the dataset objects
-        train_dataset = ObjectGraphREIDPrecompDataset(sequence_path_prefix=sequence_path,
-                                        sequence_names=["S01", "S03", "S04"],
-                                        annotations_filename='gt.txt',
-                                        num_ids_per_graph=config['num_ids_per_graph'],
-                                        return_dataframes=False,
-                                        negative_links_ratio=config['ratio_neg_links_graph'] \
-                                            if config['ratio_neg_links_graph'] != 1 else None,
-                                        graph_transform=T.ToUndirected())
+        # Set dataset obejct based on the type of input 
+        if config['input_format'] == 'gallery':
+            ObjectDataset = ObjectGraphGalleryPrecompDataset
+        else:
+            ObjectDataset = ObjectGraphREIDPrecompDataset
 
-        val_dataset = ObjectGraphREIDPrecompDataset(sequence_path_prefix=sequence_path,
-                                        sequence_names=["S02"],
-                                        annotations_filename='gt.txt',
-                                        num_ids_per_graph=-1,
-                                        return_dataframes=False,
-                                        graph_transform=T.ToUndirected())
+        # Instantiation of the dataset objects
+        train_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
+                                      sequence_names=["S01", "S03", "S04"],
+                                      annotations_filename='gt.txt',
+                                      num_ids_per_graph=config['num_ids_per_graph'],
+                                      return_dataframes=False,
+                                      negative_links_ratio=config['ratio_neg_links_graph'] \
+                                        if config['ratio_neg_links_graph'] != 1 else None,
+                                      graph_transform=T.ToUndirected())
+
+        val_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
+                                    sequence_names=["S02"],
+                                    annotations_filename='gt.txt',
+                                    num_ids_per_graph=-1,
+                                    return_dataframes=False,
+                                    graph_transform=T.ToUndirected())
 
         # Instantiation of the dataloaders
         train_dataloader = DataLoader(train_dataset, 
@@ -102,7 +110,10 @@ def trainable_function(task_config,
 
         # GNN, optimizer, criterion, and LR scheduler
         gnn_arch = update_gnn_config(gnn_arch, config)
-        gnn = MOTMPNet(gnn_arch).to(device)
+        if config['input_format'] == 'gallery':
+            gnn = GalleryMOTMPNet(gnn_arch).to(device)
+        else:
+            gnn = MOTMPNet(gnn_arch).to(device)
 
         optimizer = SGD(gnn.parameters(),
                         lr=config["lr"],
@@ -153,7 +164,7 @@ def trainable_function(task_config,
                                     annotations_filename=gt_filename)\
                                     .consolidate_annotations([test_sequence], ["frame", "camera"])
 
-        val_dataset = ObjectGraphREIDPrecompDataset(sequence_path_prefix=sequence_path,
+        val_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
                                                     sequence_names=[test_sequence],
                                                     annotations_filename=sct_filename,
                                                     num_ids_per_graph=-1,

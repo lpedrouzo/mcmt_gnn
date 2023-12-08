@@ -49,6 +49,13 @@ def update_gnn_config(gnn_config, search_space_config):
     # Classifier update
     gnn_config['classifier_feats_dict']['edge_in_dim'] = gnn_config['edge_model_feats_dict']['fc_dims'][-1]
 
+    # Update gallery combination process if applicable
+    if search_space_config['gallery_combination'] != 'off':
+        gnn_config['gallery_combinator']['layer'] = search_space_config['gallery_combination']
+
+        if search_space_config['gallery_combination'] == 'gru':
+            gnn_config['gallery_combinator']['combinator_num_gru_layers'] = search_space_config['combinator_num_gru_layers']
+
     return gnn_config
 
 

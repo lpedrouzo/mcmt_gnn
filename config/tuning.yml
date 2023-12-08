@@ -1,7 +1,7 @@
 06_hyperparameter_tuning:
   experiment_params:
-    num_trials: 100
-    experiment_name: "tuning_block_1_v2"
+    num_trials: 3
+    experiment_name: "example_gallery"
   dataset_params:
     sequence_path: 'C:/Users/mejia/Documents/tfm/mcmt_gnn/datasets/AIC20'
     test_sequence: 'S02'
@@ -14,7 +14,7 @@
     num_ids_per_graph: [100]
     # Training related
     lr: [0.01]
-    epochs: [100] 
+    epochs: [20] 
     warmup_duration: [5] # 0 is no warmup
     optimizer_momentum: [0.9] # 0 is no momentum
     lr_scheduler_step_size: [50] # 0 is scheduler off
@@ -25,6 +25,9 @@
     node_update_fc_layers: [1,2,3] # Channels icnrease x2 every layer
     edge_update_fc_layers: [1,2,3] # Channels increase x2 every layer
     edge_update_units: [2, 4, 8, 12, 20, 30, 42, 64]
+    # Gallery combinator
+    input_format: ['gallery']
+    gallery_combination: ['linear']
     # Postprocessing toggles
     pruning: [True]
     spliting: [True]

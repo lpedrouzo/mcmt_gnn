@@ -39,10 +39,17 @@ training_config:
 # Configuration parameters for the GNN architecture
 gnn_arch:
   node_agg_fn: 'sum'
-  num_enc_steps: 1  # before 4 Number of message passing steps
-  num_class_steps: 1  # before 3Number of message passing steps during feature vectors are classified (after Message Passing)
-  reattach_initial_nodes: False  # elg. Original: False Determines whether initially encoded node feats are used during node updates
-  reattach_initial_edges: False  #  elg. Original: TrueDetermines whether initially encoded edge feats are used during node updates
+  num_enc_steps: 1  
+  num_class_steps: 1 
+  reattach_initial_nodes: False  
+  reattach_initial_edges: False 
+
+  gallery_combinator: # To disable, replace the dictionary with off value.
+    layer: gru
+    combinator_feature_size: 2048 # dimension of every vector in gallery
+    combinator_output_size: 2048 # Dimension of the resulting embedding
+    frames_per_gallery: 20
+    combinator_num_gru_layers: 1
 
   encoder_feats_dict:
     edges:
