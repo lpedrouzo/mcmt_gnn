@@ -5,7 +5,6 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from torch_geometric.data import Data, Dataset
-from ..data_processor.utils import get_incremental_folder, get_previous_folder
 from .utils import simple_negative_sampling, precompute_samples_for_graph_id
 
 class ObjectGraphREIDPrecompDataset(Dataset):
@@ -25,7 +24,8 @@ class ObjectGraphREIDPrecompDataset(Dataset):
                  num_ids_per_graph,
                  return_dataframes=False, 
                  negative_links_ratio=None,
-                 graph_transform=None):
+                 graph_transform=None,
+                 trajectory_folder_name='avg'):
 
         self.sequence_path_prefix = sequence_path_prefix
         self.sequence_names = sequence_names
@@ -35,6 +35,7 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         self.return_dataframes = return_dataframes
         self.negative_links_ratio = negative_links_ratio
         self.graph_transform = graph_transform
+        self.trajectory_folder_name = trajectory_folder_name
         super(ObjectGraphREIDPrecompDataset, self).__init__(None, None, None)
 
         self.process_initial_nodes()
@@ -92,7 +93,7 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         return node_df, node_embeddings, node_labels
 
 
-    def setup_edges(self, node_df, node_embeddings):
+    def setup_edges(self, node_df):
         """Set up edge information and embeddings efficiently.
         This function efficiently establishes edges between nodes that 
         belong to different cameras in a DataFrame containing node information. 
@@ -105,8 +106,6 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         node_df: pd.DataFrame
             DataFrame containing node information with 
             columns=["camera", "node_id", "object_id"].
-        node_embeddings: torch.Tensor
-            Node embeddings.
 
         Returns
         ==========
@@ -178,9 +177,8 @@ class ObjectGraphREIDPrecompDataset(Dataset):
         # For edge_idx we take transpose as the GNN needs edges with shape (2, num_edges)
         edge_idx = torch.tensor(np.array(edge_idx), dtype=torch.int64, device=self.device).T
         edge_labels = torch.tensor(np.array(edge_labels), dtype=torch.int64, device=self.device)   
-        edge_embeddings = self.compute_edge_embeddings(node_embeddings, edge_idx)
 
-        return edge_df, edge_idx, edge_embeddings, edge_labels
+        return edge_df, edge_idx, edge_labels
 
     def compute_edge_embeddings(self, node_embeddings, edge_idx):
         """ Compute edge embeddings using l2 and cosine distances between
@@ -217,7 +215,7 @@ class ObjectGraphREIDPrecompDataset(Dataset):
             camera_folders_prefix = osp.join(self.sequence_path_prefix, 
                                              "embeddings", 
                                              sequence_name, 
-                                             self.annotations_filename, "avg")
+                                             self.annotations_filename, self.trajectory_folder_name)
             
             camera_folders = os.listdir(camera_folders_prefix)
             
@@ -286,7 +284,8 @@ class ObjectGraphREIDPrecompDataset(Dataset):
 
         #print("Generating edges")                                     
         # Loading edge information, embeddings and labels for all cameras 
-        edge_df, edge_idx, edge_embeddings, edge_labels = self.setup_edges(sampled_node_df, sampled_node_embeddings)
+        edge_df, edge_idx, edge_labels = self.setup_edges(sampled_node_df)
+        edge_embeddings = self.compute_edge_embeddings(sampled_node_embeddings, edge_idx)
 
         #print("Creating PyG graph")
         graph = Data(x=sampled_node_embeddings, 
