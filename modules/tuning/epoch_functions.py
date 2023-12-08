@@ -6,6 +6,25 @@ from sklearn.metrics import (f1_score,
                              recall_score,
                              classification_report)
 
+def get_classification_metrics(all_targets, all_predictions, all_logits, loss_fn):
+    metrics_dict = classification_report(all_targets.cpu().numpy(), 
+                                         all_predictions.cpu().numpy(), 
+                                         output_dict=True)
+    metrics = {
+        #"loss": loss_fn(all_logits, all_targets).cpu().item(),
+        "macro_f1_score": metrics_dict['macro avg']['f1-score'],
+        "precision": metrics_dict['macro avg']['precision'],
+        "recall": metrics_dict['macro avg']['recall'],
+        "f1_class0": metrics_dict['0']['f1-score'],
+        "precision_class0": metrics_dict['0']['precision'],
+        "recall_class0": metrics_dict['0']['recall'],
+        "f1_class1": metrics_dict['1']['f1-score'],
+        "precision_class1": metrics_dict['1']['precision'],
+        "recall_class1": metrics_dict['1']['recall'],
+        "accuracy": metrics_dict['accuracy']
+        }
+    return metrics
+
 def train_func(gnn_model, optimizer, train_loader, loss_fn, lr_scheduler=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     gnn_model.train()
@@ -24,6 +43,7 @@ def train_func(gnn_model, optimizer, train_loader, loss_fn, lr_scheduler=None):
             lr_scheduler.step()
     
     return loss.cpu().item()
+
 
 def test_func_multiclass(gnn_model, test_loader, loss_fn, task_type):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -59,17 +79,6 @@ def test_func_multiclass(gnn_model, test_loader, loss_fn, task_type):
     metrics_dict = classification_report(all_targets.cpu().numpy(), 
                                          all_predictions.cpu().numpy(), 
                                          output_dict=True)
-    metrics = {
-        "loss": loss_fn(all_logits, all_targets.to(device)).cpu().item(),
-        "macro_f1_score": metrics_dict['macro avg']['f1-score'],
-        "precision": metrics_dict['macro avg']['precision'],
-        "recall": metrics_dict['macro avg']['recall'],
-        "f1_class0": metrics_dict['0']['f1-score'],
-        "precision_class0": metrics_dict['0']['precision'],
-        "recall_class0": metrics_dict['0']['recall'],
-        "f1_class1": metrics_dict['1']['f1-score'],
-        "precision_class1": metrics_dict['1']['precision'],
-        "recall_class1": metrics_dict['1']['recall'],
-        "accuracy": metrics_dict['accuracy']
-        }
+    metrics = get_classification_metrics(all_targets.to(device),
+                                         all_predictions, all_logits, loss_fn)
     return metrics, graph, latent_nodes_feats, latent_edge_feats
