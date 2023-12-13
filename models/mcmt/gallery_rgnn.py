@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch_scatter import scatter_mean, scatter_max, scatter_add
-from ..layers.gallery_combination import GalleryLinearCombinationLayer, GalleryGRUCombinationLayer
+from ..layers.gallery_combination import GalleryLinearCombinationLayer, GalleryGRUCombinationLayer, GalleryMLPCombinationLayer
 from .rgnn import  MOTMPNet
 
 # Set a global random seed for CPU
@@ -43,7 +43,11 @@ class GalleryMOTMPNet(MOTMPNet):
         if combinator_params['layer'] == 'gru':
             self.combinator = GalleryGRUCombinationLayer(input_size=combinator_params['combinator_feature_size'],
                                                          hidden_size=combinator_params['combinator_output_size'],
-                                                         num_layers=combinator_params['combinator_num_gru_layers'])
+                                                         num_layers=combinator_params['combinator_num_layers'])
+        elif combinator_params['layer'] == 'mlp':
+            self.combinator = GalleryMLPCombinationLayer(combinator_params['combinator_feature_size'],
+                                                         combinator_params['frames_per_gallery'],
+                                                         combinator_params['combinator_num_layers'])
         else:
             input_size = combinator_params['combinator_feature_size']*combinator_params['frames_per_gallery']
 
@@ -74,7 +78,6 @@ class GalleryMOTMPNet(MOTMPNet):
 
         # perform gallery combination and encoding
         node_embeddings = self.combinator(x)
-        node_embeddings = node_embeddings.relu()
 
         # Generate edge attributes
         edge_attr = torch.cat((

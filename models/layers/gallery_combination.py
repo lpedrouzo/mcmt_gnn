@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from .mlp import MLP
+
 class GalleryGRUCombinationLayer(nn.Module):
     """
     Custom PyTorch module for combining gallery embeddings using a GRU layer.
@@ -158,5 +160,62 @@ class GalleryLinearCombinationLayer(nn.Module):
 
         # Apply the linear layer
         gallery_embeddings = self.linear(flattened_galleries)
+
+        return gallery_embeddings
+
+
+class GalleryMLPCombinationLayer(nn.Module):
+    """
+    Linear combination layer for combining embeddings within galleries.
+
+    Parameters
+    ----------
+    input_size : int
+        Size of a single embedding within the gallery.
+    output_size : int
+        Desired size of the output embedding.
+
+    Attributes
+    ----------
+    linear : torch.nn.Linear
+        Linear layer for performing the combination.
+
+    Methods
+    -------
+    forward(galleries)
+        Forward pass of the layer.
+
+    """
+
+    def __init__(self, gallery_input_size, num_frames_per_gallery, fc_layers_num, output_size):
+        input_size = gallery_input_size*num_frames_per_gallery
+        fc_dims = [input_size/(2*i) for i in range(1, fc_layers_num+1)]
+
+        super(GalleryMLPCombinationLayer, self).__init__()
+
+        self.mlp = MLP(input_size, fc_dims + output_size, dropout_p=None)
+
+    def forward(self, galleries):
+        """
+        Forward pass of the layer.
+
+        Parameters
+        ----------
+        galleries : torch.Tensor
+            Input tensor with shape (N, G, C), where N is the number of objects,
+            G is the size of the gallery, and C is the size of a single
+              embedding within the gallery.
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor with shape (N, G * C), representing the combined 
+            embeddings within the galleries.
+        """
+        # Reshape the galleries tensor to (N, G * C) for linear layer input
+        flattened_galleries = galleries.view(galleries.size(0), -1)
+
+        # Apply the linear layer
+        gallery_embeddings = self.mlp(flattened_galleries)
 
         return gallery_embeddings
