@@ -53,8 +53,8 @@ def update_gnn_config(gnn_config, search_space_config):
     if search_space_config['gallery_combination'] != 'off':
         gnn_config['gallery_combinator']['layer'] = search_space_config['gallery_combination']
 
-        if search_space_config['gallery_combination'] == 'gru':
-            gnn_config['gallery_combinator']['combinator_num_gru_layers'] = search_space_config['combinator_num_gru_layers']
+        if search_space_config['gallery_combination'] in ('gru', 'mlp'):
+            gnn_config['gallery_combinator']['combinator_num_layers'] = search_space_config['combinator_num_layers']
 
     return gnn_config
 
