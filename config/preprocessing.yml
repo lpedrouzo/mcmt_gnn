@@ -51,7 +51,7 @@ common_params:
   test_sequences: ["S02"]
 
 05b_extract_galleries:
-  annotations_filename: 'gt.txt'
-  train_sequences: ["S01", "S03", "S04"]
+  annotations_filename: 'mtsc_tnt_ssd512_roi_filtered.txt'
+  train_sequences: []
   test_sequences: ["S02"]
   frames_per_gallery: 20

@@ -15,6 +15,7 @@ def draw_pyg_network(data,
                      layout='circular', 
                      undirected=True,
                      save_path:str=None,
+                     figsize=(15,10),
                      show=True):
     """ Visualize a PyTorch Geometric graph using NetworkX and Matplotlib.
     This function creates a visual representation of the input graph using NetworkX and Matplotlib. It supports
@@ -43,7 +44,7 @@ def draw_pyg_network(data,
     ==========
     None
     """
-    fig = plt.figure(figsize=(15, 10))
+    fig = plt.figure(figsize=figsize)
 
     # Nodes definitions
     node_labels = node_labels if node_labels is not None else data.y.tolist()

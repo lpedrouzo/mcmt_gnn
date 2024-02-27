@@ -15,7 +15,7 @@ training_config:
     annotations_filename: 'gt.txt'
     num_ids_per_graph: 64
     embeddings_per_iteration: 512
-    resized_img_shape: [224, 224]
+    resized_img_shape: [384,384]
     train_batch_size: 1
     test_batch_size: 1
     negative_sampling: false # Negative sampling to balance training

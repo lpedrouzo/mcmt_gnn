@@ -8,7 +8,6 @@ import multiprocessing
 
 from .utils import try_loading_logs, generate_samples_for_galleries
 from ..torch_dataset.bounding_box_dataset import BoundingBoxDataset
-from ..torch_dataset.reid_embedding_dataset import REIDEmbeddingDataset
 from torch.utils.data import DataLoader
 from time import time
 from tqdm import tqdm
@@ -71,31 +70,7 @@ class EmbeddingsProcessor(object):
         self.cnn_model.eval()
         return self._compute_reid_data(bb_loader, 
                                        lambda bbox_img: self.cnn_model(bbox_img.to(self.device)))
-
-
-    def load_embeddings_from_filesystem(self, 
-                                        det_df, 
-                                        frame_dir, 
-                                        fully_qualified_dir, 
-                                        mode):
         
-        assert self.annotations_filename, "You should set the name of the annotations file before loadind embeddings from FS."
-        
-        ds = REIDEmbeddingDataset(det_df, 
-                                  frame_dir=frame_dir, 
-                                  annotations_filename=self.annotations_filename,
-                                  fully_qualified_dir=fully_qualified_dir, 
-                                  return_det_ids_and_emb=True, 
-                                  mode=mode)
-        
-        embedding_loader = DataLoader(ds,
-                                      batch_size=self.img_batch_size,
-                                      num_workers=self.num_workers)
-        
-        return self._compute_reid_data(embedding_loader,
-                                       lambda bbox_embedding: (bbox_embedding, bbox_embedding) )
-        
-
     def _compute_reid_data(self, loader, reid_fn):
         node_embeds = []
         reid_embeds = []

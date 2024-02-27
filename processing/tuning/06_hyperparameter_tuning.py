@@ -294,14 +294,14 @@ if __name__ == '__main__':
                         device,
                         experiment_id)
 
-    mlflow.set_tracking_uri("http://localhost:8080")
+    mlflow.set_tracking_uri("http://192.168.23.226:5000")
 
     print("Loading Optuna")  
     # Initialize the Optuna study
     study = optuna.create_study(direction="maximize", 
-                               # sampler=optuna.samplers.GridSampler(
-                               #     search_space=search_space
-                               # ),
+                                sampler=optuna.samplers.GridSampler(
+                                    search_space=search_space
+                                ),
                                 study_name=experiment_name,
                                 storage=f"sqlite:///results/{experiment_name}.db",
                                 load_if_exists=True)

@@ -15,7 +15,7 @@ class BoundingBoxDataset(Dataset):
     def __init__(self, det_df:pd.DataFrame, 
                  frame_dir:str,
                  fully_qualified_dir=True,
-                 output_size:tuple = (128, 64),
+                 output_size:tuple = None,
                  return_det_ids_and_frame:bool = False,
                  mode='train',
                  augmentation=None):
@@ -25,10 +25,13 @@ class BoundingBoxDataset(Dataset):
         self.frame_dir = frame_dir
         self.fully_qualified_dir = fully_qualified_dir
         
-        transform_list = [Resize(output_size), 
-                          ToTensor(), 
-                          Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
-        
+        if output_size:
+            transform_list = [Resize(output_size), 
+                            ToTensor(), 
+                            Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]
+        else:
+            transform_list = [ToTensor()]
+
         if augmentation and mode == 'train':
             transform_list.append(augmentation)
         
