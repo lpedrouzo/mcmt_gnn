@@ -26,13 +26,14 @@ from modules.torch_trainer.custom_loss import CECustom
 from modules.plots import tsne2d_scatterplot, draw_pyg_network, plot_tsne_samples, plot_histogram_wrapper
 from modules.inference.inference_module import InferenceModule
 from modules.data_processor.annotations_processor import AnnotationsProcessor
-from modules.tuning.trial_helpers import update_gnn_config, get_or_create_experiment, warmup_lr
+from modules.tuning.trial_helpers import update_gnn_config, get_or_create_experiment, warmup_lr, define_gallery_gnn_config
 
 
 def trainable_function(task_config, 
                        experiment_params, 
                        search_space, 
                        gnn_arch, 
+                       toggles,
                        device, 
                        experiment_id, 
                        trial):
@@ -72,9 +73,12 @@ def trainable_function(task_config,
         mlflow.log_params(config)
 
         mlflow.set_tags({
-        "sct_filename": sct_filename,
-        "gt_filename": gt_filename,
-        "test_sequence": test_sequence
+            "sct_filename": sct_filename,
+            "gt_filename": gt_filename,
+            "test_sequence": test_sequence,
+            "toggle_gnn_update": toggles['modify_gnn_config'],
+            "enable_negative_sampling": toggles['enable_negative_sampling'],
+            "enable_dynamic_weights": toggles['enable_dynamic_weights']
         })
 
         # Set dataset obejct based on the type of input 
@@ -90,7 +94,7 @@ def trainable_function(task_config,
                                       num_ids_per_graph=config['num_ids_per_graph'],
                                       return_dataframes=False,
                                       negative_links_ratio=config['ratio_neg_links_graph'] \
-                                        if config['ratio_neg_links_graph'] != 1 else None,
+                                        if toggles['enable_negative_sampling'] == True else None,
                                       graph_transform=T.ToUndirected())
 
         val_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
@@ -109,7 +113,12 @@ def trainable_function(task_config,
                                     shuffle=False)
 
         # GNN, optimizer, criterion, and LR scheduler
-        gnn_arch = update_gnn_config(gnn_arch, config)
+
+        if toggles['modify_gnn_config'] == 'all':
+            gnn_arch = update_gnn_config(gnn_arch, config)
+        elif toggles['modify_gnn_config'] == 'gallery_gnn':
+            gnn_arch = define_gallery_gnn_config(gnn_arch, config)
+            
         if config['input_format'] == 'gallery':
             gnn = GalleryMOTMPNet(gnn_arch).to(device)
         else:
@@ -120,7 +129,7 @@ def trainable_function(task_config,
                         momentum=config["optimizer_momentum"])
 
         criterion = CrossEntropyLoss(reduction='mean') \
-            if config["ratio_neg_links_graph"] != 1 else CECustom()
+            if toggles["enable_dynamic_weights"] == False else CECustom()
 
         lr_scheduler = StepLR(optimizer, 
                                 config["lr_scheduler_step_size"], 
@@ -165,11 +174,11 @@ def trainable_function(task_config,
                                     .consolidate_annotations([test_sequence], ["frame", "camera"])
 
         val_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
-                                                    sequence_names=[test_sequence],
-                                                    annotations_filename=sct_filename,
-                                                    num_ids_per_graph=-1,
-                                                    return_dataframes=True,
-                                                    graph_transform=T.ToUndirected())
+                                    sequence_names=[test_sequence],
+                                    annotations_filename=sct_filename,
+                                    num_ids_per_graph=-1,
+                                    return_dataframes=True,
+                                    graph_transform=T.ToUndirected())
 
         graph, node_df, edge_df = val_dataset[0]
 
@@ -274,6 +283,7 @@ if __name__ == '__main__':
         task_config = yaml_file['dataset_params']
         experiment_params = yaml_file['experiment_params']
         search_space = yaml_file['search_space']
+        toggles = yaml_file['hyperparam_toggles']
     
     print("Loading GNN default config")
     with open("config/training_rgcnn.yml", "r") as config_file:
@@ -291,6 +301,7 @@ if __name__ == '__main__':
                         experiment_params,
                         search_space, 
                         gnn_arch, 
+                        toggles,
                         device,
                         experiment_id)
 
@@ -301,7 +312,7 @@ if __name__ == '__main__':
     study = optuna.create_study(direction="maximize", 
                                 sampler=optuna.samplers.GridSampler(
                                     search_space=search_space
-                                ),
+                                ) if experiment_params["sampler"]=='grid' else None,
                                 study_name=experiment_name,
                                 storage=f"sqlite:///results/{experiment_name}.db",
                                 load_if_exists=True)

@@ -47,7 +47,8 @@ class GalleryMOTMPNet(MOTMPNet):
         elif combinator_params['layer'] == 'mlp':
             self.combinator = GalleryMLPCombinationLayer(combinator_params['combinator_feature_size'],
                                                          combinator_params['frames_per_gallery'],
-                                                         combinator_params['combinator_num_layers'])
+                                                         combinator_params['combinator_num_layers'],
+                                                         combinator_params['combinator_output_size'])
         else:
             input_size = combinator_params['combinator_feature_size']*combinator_params['frames_per_gallery']
 

@@ -58,6 +58,16 @@ def update_gnn_config(gnn_config, search_space_config):
 
     return gnn_config
 
+def define_gallery_gnn_config(gnn_config, search_space_config):
+    # Update gallery combination process if applicable
+    if search_space_config['gallery_combination'] != 'off':
+        gnn_config['gallery_combinator']['layer'] = search_space_config['gallery_combination']
+
+        if search_space_config['gallery_combination'] in ('gru', 'mlp'):
+            gnn_config['gallery_combinator']['combinator_num_layers'] = search_space_config['combinator_num_layers']
+
+    return gnn_config
+
 
 def warmup_lr(epoch, warmup_epochs):
     if epoch < warmup_epochs:
