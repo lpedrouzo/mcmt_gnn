@@ -1,17 +1,24 @@
 # Multi-Object Multi-Camera tracking with Graph Neural Networks
 This repository contains the code for a multi-object multi-camera tracking system in an offline setting using Graph Neural Networks for tracklet association and Connected Components to retrieve the global trajectories.
 
-
 ![My Movie 1 (2)](https://github.com/hector6298/mcmt_gnn/assets/41920808/b8f71a5a-c243-4ebb-a524-cdb7dc250649)
 
+Take a look at te system diagram:
+![sys_diag (2)](https://github.com/hector6298/mcmt_gnn/assets/41920808/ea62393e-e73b-4163-8a1c-be3e84c693a6)
+
+And this is how the graphs are generated:
+![avg (1)](https://github.com/hector6298/mcmt_gnn/assets/41920808/43c0f634-186c-45e1-abdf-d6f4da09551d)
+
+For a more in-depth description, see my thesis document here.
+
 #### Note
-For an overview of how this repository is organized, what the folders and scripts mean, please see [repo_organization.md](https://github.com/hector6298/mcmt_gnn/blob/main/repo_organization.md).
+For an overview of how this repository is organized, and what the folders and scripts mean, please see [repo_organization.md](https://github.com/hector6298/mcmt_gnn/blob/main/repo_organization.md).
 
 ## Setting up the workspace
 
 IMPORTANT. Before setting up the repository, make sure you have access to the [Nvidia AI City Challenge](https://www.aicitychallenge.org/2021-track3-download/) (AIC) dataset.
 
-Clone the repository and change directory:
+Clone the repository and change the directory:
 
 ```bash
 git clone https://github.com/hector6298/mcmt_gnn.git
@@ -62,7 +69,7 @@ The first step moves all videos, bitmaps of the regions of interest, and annotat
     - train
     - validation
   # Relative paths to annotations
-  preds_path: "mtsc/mtsc_deepsort_ssd512.txt"
+  preds_path: "mtsc/mtsc_tc_yolo3.txt"
   annotations_path: "gt/gt.txt"
   roi_filename: 'roi.jpg'
   video_filename: 'vdo.avi'
@@ -159,7 +166,7 @@ This task filters-out detections from the single-camera tracking estimations. It
 - Duplicate detection removal
 - Removing detections with area less than `min_bb_area`
 
-Look at the task keys:
+This is done for the single-camera tracking estimations that will be used  on the validation set. Look at the task keys:
 
 ``` yaml
 04_filter_sc_tracking:
@@ -171,15 +178,139 @@ Look at the task keys:
   filter_roi: true
 ```
 
-You should only change `in_sc_preds_filename` by placing the tracking file or ground truth from the previous task and `out_sc_preds_filename` with a name of your choice that represents the filtered tracking file.
+You should only change `in_sc_preds_filename` by placing the tracking file from the previous task and `out_sc_preds_filename` with a name of your choice that represents the filtered tracking file.
 
+Execute:
+
+```
+python processing/dataset_preparation/AIC20/04_filter_sc_tracking.py
+```
+
+Now you also need to do this for the ground truth:
+
+``` yaml
+04_filter_sc_tracking:
+  validation_partition: 'S02'
+  in_sc_preds_filename:  'gt.txt'
+  out_sc_preds_filename: 'gt_roi_filtered.txt'
+  min_bb_area : 750
+  filter_frame_bounds: false
+  filter_roi: true
+```
+
+Execute:
+
+```
+python processing/dataset_preparation/AIC20/04_filter_sc_tracking.py
+```
 
 ### 5. Extract and store ReID embeddings
+This task will use the Re-ID model weights from Fractal's repository to compute appearance embedding for every single detection. Then, it will store individual embeddings on the filesystem, grouped by frames, cameras, and sequences.
 
+Let's look at the keys for an execution with the single-camera tracking estimations:
+
+``` yaml
+05_extract_reid_embeddings:
+  max_detections_per_df: 5000
+  model_type: 'resnet'
+  model_path: 'models/reid/resnet101_ibn_a_2.pth'
+  annotations_filename: 'mtsc_tc_yolo3_roi_filtered.txt'
+  train_sequences: ["S01", "S03", "S04"]
+  test_sequences: ["S02"]
+  cnn_img_size: [384, 384]
+  img_batch_size: 300
+  augmentation: false
+  add_detection_id: true
+```
+
+See the train sequences are S01, S02, S03 and the test sequence is S02. Please keep the split in that way. Moreover, write the model path, relative to the root of the repository. Optionally, you can play with the following parameters to fit the available resources of your machine:
+
+- `max_detections_per_df`: How many detections to process at once. The more detections, the faster, but requires more memory.
+- `cnn_img_size`: (height, width) The resulting resolution of the image after reshaping the original detections.
+- `img_batch_size`: This task uses a Pytorch dataloader to load images, so more images more memory, and faster.
+
+Execute:
+
+```
+python processing/dataset_preparation/AIC20/05_extract_reid_embeddings.py
+```
+
+Now we also need to do this for the ground truth files. Check out the keys:
+
+``` yaml
+05_extract_reid_embeddings:
+  max_detections_per_df: 5000
+  model_type: 'resnet'
+  model_path: 'models/reid/resnet101_ibn_a_2.pth'
+  annotations_filename: 'gt_roi_filtered.txt'
+  train_sequences: ["S01", "S03", "S04"]
+  test_sequences: ["S02"]
+  cnn_img_size: [384, 384]
+  img_batch_size: 300
+  augmentation: false
+  add_detection_id: true
+```
+
+Execute:
+
+```
+python processing/dataset_preparation/AIC20/05_extract_reid_embeddings.py
+```
+
+### 5a. Store average trajectory embeddings
 
 ``` yaml
 05a_extract_trajectory_embeddings:
   annotations_filename: 'gt_roi_filtered.txt'
-  train_sequences: []
+  train_sequences: ["S01", "S03", "S04"]
   test_sequences: ["S02"]
+```
+
+### 5a. Store Gallery embeddings
+
+``` yaml
+05b_extract_galleries:
+  annotations_filename: 'gt.txt'
+  train_sequences: ["S01", "S03", "S04"]
+  test_sequences: ["S02"]
+  frames_per_gallery: 20
+```
+
+
+### 6 Execute training iterations for average embeddings
+
+``` yaml
+06_hyperparameter_tuning:
+  experiment_params:
+    num_trials: 3
+    experiment_name: "example_gallery"
+  dataset_params:
+    sequence_path: 'C:/Users/mejia/Documents/tfm/mcmt_gnn/datasets/AIC20'
+    test_sequence: 'S02'
+    gt_filename: "gt_roi_filtered.txt"
+    sct_filename: "mtsc_tnt_ssd512_roi_filtered.txt"
+    eval_metric: macro_f1_score
+  search_space:
+    # Dataset related
+    ratio_neg_links_graph: [1] # 1 means original ratio
+    num_ids_per_graph: [100]
+    # Training related
+    lr: [0.01]
+    epochs: [20] 
+    warmup_duration: [5] # 0 is no warmup
+    optimizer_momentum: [0.9] # 0 is no momentum
+    lr_scheduler_step_size: [50] # 0 is scheduler off
+    # GNN architecture
+    message_passing_steps: [1]
+    node_enc_fc_layers: [1,3,5] # Feat num decrease /2 every layer
+    edge_enc_fc_layers: [1,2,3] # Feat num increase x2 every layer
+    node_update_fc_layers: [1,2,3] # Channels increase x2 every layer
+    edge_update_fc_layers: [1,2,3] # Channels increase x2 every layer
+    edge_update_units: [2, 4, 8, 12, 20, 30, 42, 64]
+    # Gallery combinator
+    input_format: ['gallery']
+    gallery_combination: ['linear']
+    # Postprocessing toggles
+    pruning: [True]
+    spliting: [True]
 ```
