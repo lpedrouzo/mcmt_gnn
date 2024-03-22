@@ -1,4 +1,8 @@
 # Multi-Object Multi-Camera tracking with Graph Neural Networks
+This repository contains the code for a multi-object multi-camera tracking system in an offline setting using Graph Neural Networks for tracklet association and Connected Components to retrieve the global trajectories.
+
+![My Movie 1 (1)](https://github.com/hector6298/mcmt_gnn/assets/41920808/c915f2e9-e98f-4f4a-ab26-390921e9837d)
+
 
 #### Note
 For an overview of how this repository is organized, what the folders and scripts mean, please see [repo_organization.md](https://github.com/hector6298/mcmt_gnn/blob/main/repo_organization.md).
