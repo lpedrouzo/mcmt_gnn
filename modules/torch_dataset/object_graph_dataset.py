@@ -5,7 +5,6 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from torch_geometric.data import Data, Dataset
-from torch_geometric.utils.negative_sampling import negative_sampling
 from ..data_processor.embeddings_processor import EmbeddingsProcessor
 from ..data_processor.utils import check_nans_df, check_nans_tensor
 from .utils import simple_negative_sampling, get_n_rows_per_group, precompute_samples_for_graph_id
