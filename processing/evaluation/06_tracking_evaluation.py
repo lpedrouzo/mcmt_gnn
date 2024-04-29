@@ -8,7 +8,7 @@ import torch_geometric.transforms as T
 from modules.torch_dataset.object_graph_dataset import ObjectGraphDataset
 from modules.data_processor.annotations_processor import AnnotationsProcessor
 from models.reid.resnet import resnet101_ibn_a
-from tests.mpn import MOTMPNet #from models.mcmt.rgnn import MOTMPNet
+from models.mcmt.rgnn import MOTMPNet
 from modules.inference.inference_module import InferenceModule
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
