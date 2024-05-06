@@ -13,6 +13,24 @@ from modules.data_processor.utils import load_config
 
 
 def main_filter_sc_tracking(config_filepath:str="config/preprocessing.yml")->None:
+    """Runs step 04: filtering annotations of validation data, based on ROI and frame bounds, as configured in yml file
+
+    The yml file must have the following configuration parameters:
+    - `common_params` block with
+        - `sequence_path`
+        - `sc_preds_filename`
+    - `04_filter_sc_tracking` block, with the configuration parameters for this step:
+        - `validation_partition`
+        - `in_sc_preds_filename`
+        - `out_sc_preds_filename`
+        - `min_bb_area`
+        - `filter_frame_bounds`
+        - `filter_roi`
+
+    Args:
+        config_filepath (str, optional): Path to yml configuration file. Defaults to "config/preprocessing.yml".
+    """
+    
     # Loading configuration
     common_config, task_config = load_config(config_filepath,"04_filter_sc_tracking")
 
