@@ -6,16 +6,7 @@ sys.path.insert(1, osp.abspath('.'))
 
 from modules.data_processor.utils import load_config
 
-common_config, task_config = load_config("config/preprocessing.yml",
-                                         "01_prep_videos_annotations")
-
-entrypoint = task_config['original_aic_dataset_path']
-partitions = task_config['dataset_partitions']
-
-output_path_prefix = common_config['sequence_path']
-output_folders = ("frames", "videos", "annotations", "embeddings")
-
-def create_output_folder(sequence_name:str, camera_name:str, folder_type:str) -> str:
+def create_output_folder(sequence_name:str, camera_name:str, folder_type:str, output_path_prefix:str)-> str:
     """Create the output folder and return the path as a string.
     """
     output_path = osp.join(output_path_prefix, folder_type, sequence_name, camera_name)
@@ -23,7 +14,7 @@ def create_output_folder(sequence_name:str, camera_name:str, folder_type:str) ->
     return output_path
 
 
-def move_data_to_output_folder(raw_sequence_path:str, sequence_name:str, camera_name:str, filename:str, folder_type:str) -> None:
+def move_data_to_output_folder(raw_sequence_path:str, sequence_name:str, camera_name:str, filename:str, folder_type:str, output_path_prefix:str) -> None:
     """Moves the desired file in the raw dataset to the desired folder path
     by performing the following steps:
     1. Getting the path of the raw folder
@@ -34,15 +25,15 @@ def move_data_to_output_folder(raw_sequence_path:str, sequence_name:str, camera_
     camera_path = osp.join(raw_sequence_path, camera_name, filename)
 
     # Create the output folder
-    camera_output_path = create_output_folder(sequence_name, camera_name, folder_type)
+    camera_output_path = create_output_folder(sequence_name, camera_name, folder_type, output_path_prefix)
 
     # Move file to output folder
     shutil.copy(src=camera_path, dst=camera_output_path)
 
-    print(f"Moved from {camera_path} to {camera_path}")
+    print(f"Moved from {camera_path} to {camera_output_path}")
 
 
-def process_partition(entrypoint, partition, video_path, roi_path=None, preds_path=None, annotations_path=None):
+def process_partition(entrypoint, partition, video_path, output_dir, roi_path=None, preds_path=None, annotations_path=None):
     """ Creates destination folders and copies videos and annotations
     to those destination folders.
     """
@@ -62,20 +53,49 @@ def process_partition(entrypoint, partition, video_path, roi_path=None, preds_pa
                     print(sequence_path, camera_name)
 
                     # 1. Move video from raw to output folder
-                    move_data_to_output_folder(sequence_path, sequence_name, camera_name, video_path, "videos")
+                    move_data_to_output_folder(sequence_path, sequence_name, camera_name, video_path, "videos", output_dir)
 
                     # 2. Move roi from raw to output folder
                     if roi_path:
-                        move_data_to_output_folder(sequence_path, sequence_name, camera_name, roi_path, "roi")
+                        move_data_to_output_folder(sequence_path, sequence_name, camera_name, roi_path, "roi", output_dir)
 
                     # 2. Move annotations from raw to output folder
                     if preds_path:
-                        move_data_to_output_folder(sequence_path, sequence_name, camera_name, preds_path, "annotations")
+                        move_data_to_output_folder(sequence_path, sequence_name, camera_name, preds_path, "annotations", output_dir)
 
                     if annotations_path:
-                        move_data_to_output_folder(sequence_path, sequence_name, camera_name, annotations_path, "annotations")
-                        
-if __name__ == "__main__":
+                        move_data_to_output_folder(sequence_path, sequence_name, camera_name, annotations_path, "annotations", output_dir)
+
+
+def main_prep_videos_annotations(config_filepath:str="config/preprocessing.yml")->None:
+    """Runs step 01: preparing video annotations, using the configuration from the selected yml file.
+
+    The yml file must have the following configuration parameters:
+    - `common_params` block with
+        - `sequence_path`
+        - `sc_preds_filename`
+    - `01_prep_videos_annotations` block, with the configuration parameters for this step:
+        - `original_aic_dataset_path`
+        - `dataset_partitions`
+            - `train`
+            - `validation`
+        - `preds_path`
+        - `annotations_path`
+        - `roi_filename`
+        - `video_filename`
+        
+    Args:
+        config_filepath (str, optional): Path to yml configuration file, relative to repo root. Defaults to "config/preprocessing.yml".
+    """
+
+    common_config, task_config = load_config(config_filepath,
+                                         "01_prep_videos_annotations")
+
+    entrypoint = task_config['original_aic_dataset_path']
+    partitions = task_config['dataset_partitions']
+
+    output_path_prefix = common_config['sequence_path']
+    output_folders = ("frames", "videos", "annotations", "embeddings")
 
     print("Creating the structure of the data for the project")
     for output_folder in output_folders:
@@ -86,12 +106,13 @@ if __name__ == "__main__":
         else:
             print(f"Folder {output_path} already exists")
 
-    for partition in task_config['dataset_partitions']:
+    for partition in partitions:
         process_partition(entrypoint, partition, 
                         task_config['video_filename'], 
+                        output_path_prefix,
                         task_config['roi_filename'],
                         task_config['preds_path'], 
                         task_config['annotations_path'])
 
-    # Example of raw video: "datasets/raw/AIC20/train/S01/c001/vdo.avi"
-    # Example of output video: "datasets/AIC20/videos/S01/c001/vdo.avi"
+if __name__ == "__main__":
+    main_prep_videos_annotations()
