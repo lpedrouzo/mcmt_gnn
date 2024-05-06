@@ -21,10 +21,27 @@ annotations_schema = {
     'label': np.int64
 }
 
-common_config, task_config = load_config("config/preprocessing.yml", 
-                                         "03_preprocess_annotations")
 
-if __name__ == "__main__":
+
+def main_preprocess_annotations(config_filepath:str="config/preprocessing.yml")->None:
+    """Runs step 03: preprocessing annotations using the configuration from the yml file.
+
+    The yml file must have the following configuration parameters:
+    - `common_params` block with
+        - `sequence_path`
+        - `sc_preds_filename`
+    - `03_preprocess_annotations` block, with the configuration parameters for this step:
+        - `sequences_to_process`
+        - `sort_column_name`
+        - `gt_filename`
+        - `sc_preds_filename`
+
+
+    Args:
+        config_filepath (str, optional): Path to yml configuration file. Defaults to "config/preprocessing.yml".
+    """
+    common_config, task_config = load_config(config_filepath, "03_preprocess_annotations")
+
     # Iterate over all of the sequences
     for sequence_name in task_config['sequences_to_process']:
 
@@ -61,3 +78,6 @@ if __name__ == "__main__":
 
             print("Standardizing bounding box coordinates")
             det_proc.standardize_bounding_box_columns()
+
+if __name__ == "__main__":
+    main_preprocess_annotations()
