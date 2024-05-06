@@ -10,12 +10,12 @@ from modules.inference.preprocessing import (filter_dets_outside_frame_bounds,
 
 from modules.data_processor.utils import load_config
 
-# Loading configuration
-common_config, task_config = load_config("config/preprocessing.yml",
-                                         "04_filter_sc_tracking")
 
-if __name__ == "__main__":
-    
+
+def main_filter_sc_tracking(config_filepath:str="config/preprocessing.yml")->None:
+    # Loading configuration
+    common_config, task_config = load_config(config_filepath,"04_filter_sc_tracking")
+
     # Assigning variables according to the configuration definitions
     sequence_name = task_config['validation_partition']
     sequence_path_prefix = common_config['sequence_path']
@@ -65,3 +65,7 @@ if __name__ == "__main__":
         # Save the filtered annotations
         annotations_df.to_csv(out_annotations)
         print(f"Saved processed annotation at {out_annotations}")
+
+if __name__ == "__main__":
+    main_filter_sc_tracking()
+    
