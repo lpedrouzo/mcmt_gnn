@@ -32,10 +32,20 @@ conda create --name mcmt_env python=3.9
 conda activate mcmt_env
 ```
 
-Install python dependencies:
-
+Install pyTorch with GPU through conda:
 ```bash
-pip install torch pytorch_geometric motmetrics mlflow optuna optuna-dashboard networkx mmengine
+conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia   # check your cuda version
+```
+
+Install pyTorch Geometrics through conda:
+```bash
+conda install pyg -c pyg
+``` 
+
+Install the following python packages through conda:
+```bash
+conda install -c conda-forge mlflow networkx gdown mmengine optuna optuna-dashboard motmetrics
+
 ```
 
 Download ResNet101 - BN REID model for vehicles (see [LCFractal's repo](https://github.com/LCFractal/AIC21-MTMC) as they authors are the owners of this model):
