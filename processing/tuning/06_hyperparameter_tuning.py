@@ -90,7 +90,7 @@ def trainable_function(task_config,
         # Instantiation of the dataset objects
         train_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
                                       sequence_names=["S01", "S03", "S04"],
-                                      annotations_filename='gt.txt',
+                                      annotations_filename=gt_filename,
                                       num_ids_per_graph=config['num_ids_per_graph'],
                                       return_dataframes=False,
                                       negative_links_ratio=config['ratio_neg_links_graph'] \
@@ -99,7 +99,7 @@ def trainable_function(task_config,
 
         val_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
                                     sequence_names=["S02"],
-                                    annotations_filename='gt.txt',
+                                    annotations_filename=gt_filename,
                                     num_ids_per_graph=-1,
                                     return_dataframes=False,
                                     graph_transform=T.ToUndirected())
