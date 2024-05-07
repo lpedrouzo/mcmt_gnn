@@ -12,11 +12,33 @@ from modules.data_processor.embeddings_processor import EmbeddingsProcessor
 from modules.data_processor.utils import load_config
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-common_config, task_config = load_config("config/preprocessing.yml", 
-                                         "05_extract_reid_embeddings")
 
 
-if __name__ == '__main__':
+def main_extract_reid_embeddings(config_filepath:str="config/preprocessing.yml")->None:
+    """Runs step 05: extracting ReID embeddings of every detection in the dataset, according to the yml configuration file
+
+    The yml file must have the following configuration parameters:
+    - `common_params` block with
+        - `sequence_path`
+        - `sc_preds_filename`
+    - `05_extract_reid_embeddings` block, with the configuration parameters for this step:
+        - `max_detections_per_df`
+        - `model_type`
+        - `model_path`
+        - `annotations_filename`
+        - `train_sequences`
+        - `test_sequences`        
+        - `cnn_img_size`
+        - `img_batch_size`
+        - `augmentation`
+        - `add_detection_id`
+
+
+    Args:
+        config_filepath (str, optional): Path to yml configuration file. Defaults to "config/preprocessing.yml".
+    """
+    common_config, task_config = load_config(config_filepath, "05_extract_reid_embeddings")
+
     # Instantiate model and load weights (send to GPU if applicable)
     if task_config['model_type'] == 'resnet':
         model = resnet101_ibn_a(model_path=task_config['model_path'], device=device)
@@ -65,3 +87,7 @@ if __name__ == '__main__':
         emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], 
                                   mode='test',
                                   add_detection_id=task_config['add_detection_id'])
+
+
+if __name__ == '__main__':
+    main_extract_reid_embeddings()
