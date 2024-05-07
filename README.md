@@ -25,6 +25,29 @@ git clone https://github.com/hector6298/mcmt_gnn.git
 cd mcmt_gnn
 ```
 
+Move the raw AIC dataset you just downloaded into a folder inside datasets/raw folder with root on this repo:
+
+```bash
+mkdir datasets
+mkdir datasets/raw
+mv <AIC_original_path> datasets/raw
+```
+
+### Creating conda environment via yml file
+
+
+Create the environment with all the required packages:
+```bash
+conda env create -f environment.yml
+```
+This will create an environment named `mcmt_env`, which you then need to activate:
+```bash
+conda activate mcmt_env
+```
+
+### Creating conda environment manually
+Alternatively, you can create the environment and install the dependencies manually.
+
 Create a conda environment:
 
 ```bash
@@ -44,9 +67,11 @@ conda install pyg -c pyg
 
 Install the following python packages through conda:
 ```bash
-conda install -c conda-forge mlflow networkx gdown mmengine optuna optuna-dashboard motmetrics
+conda install -c conda-forge mlflow networkx gdown mmengine optuna optuna-dashboard motmetrics pytorch-scatter seaborn opencv
 
 ```
+
+### ReID pre-trained model
 
 Download ResNet101 - BN REID model for vehicles (see [LCFractal's repo](https://github.com/LCFractal/AIC21-MTMC) as they authors are the owners of this model):
 
@@ -54,13 +79,7 @@ Download ResNet101 - BN REID model for vehicles (see [LCFractal's repo](https://
 gdown 105guaZrBzOF92-gmo0q7yWxHJKu1bXcv -O models/reid/resnet101_ibn_a_2.pth
 ```
 
-Move the raw AIC dataset you just downloaded into a folder inside datasets/raw folder with root on this repo:
 
-```bash
-mkdir datasets
-mkdir datasets/raw
-mv <AIC_original_path> datasets/raw
-```
 
 And now we should be all set to start preprocessing the data!
 
