@@ -41,7 +41,7 @@ pip install torch pytorch_geometric motmetrics mlflow optuna optuna-dashboard ne
 Download ResNet101 - BN REID model for vehicles (see [LCFractal's repo](https://github.com/LCFractal/AIC21-MTMC) as they authors are the owners of this model):
 
 ```bash
-gdown 'https://drive.google.com/uc?id=1DXKpvDigCOXqoTiRObI--klRCuVQSsFM&export=download -O models/reid/resnet101_ibn_a_2.pth
+gdown 105guaZrBzOF92-gmo0q7yWxHJKu1bXcv -O models/reid/resnet101_ibn_a_2.pth
 ```
 
 Move the raw AIC dataset you just downloaded into a folder inside datasets/raw folder with root on this repo:
@@ -79,7 +79,7 @@ Now notice that inside this file there is a key called `common_params`, it conta
 Now, execute the first task:
 
 ```
-python processing/dataset_preparation/01_prep_videos_annotations.py
+python processing/dataset_preparation/AIC20/01_prep_videos_annotations.py
 ```
 
 This will create two initial folders:
