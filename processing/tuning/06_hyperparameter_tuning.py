@@ -151,6 +151,14 @@ def trainable_function(task_config,
             # Prepare for a new epoch if trial is not pruned
             train_dataloader.dataset.on_epoch_end()
 
+        
+        # Save the model checkpoint
+        checkpoint_path = f"model_checkpoint_trial_{trial.number}.pt"
+        torch.save(gnn.state_dict(), checkpoint_path)
+
+        # Log the model checkpoint to MLflow
+        mlflow.log_artifact(checkpoint_path)
+
         # Save artifacts to be picked up by mlflow
         tsne = tsne2d_scatterplot(node_feats.cpu(), 
                                   graph.y.cpu(), 
@@ -289,6 +297,8 @@ if __name__ == '__main__':
     with open("config/training_rgcnn.yml", "r") as config_file:
         config = yaml.safe_load(config_file)
         gnn_arch = config["gnn_arch"]
+
+    mlflow.set_tracking_uri("http://192.168.23.226:5000")
     
     # Set the experiment as the annotations name plus the experiment block id
     experiment_name = task_config['sct_filename'].replace('.txt', '')\
@@ -305,7 +315,7 @@ if __name__ == '__main__':
                         device,
                         experiment_id)
 
-    mlflow.set_tracking_uri("http://192.168.23.226:5000")
+    
 
     print("Loading Optuna")  
     # Initialize the Optuna study
