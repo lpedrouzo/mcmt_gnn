@@ -2,6 +2,7 @@ import os.path as osp
 import os
 import json
 import yaml
+import socket
 import torch
 import numpy as np
 
@@ -107,3 +108,30 @@ def generate_samples_for_galleries(annotations_df, frames_per_gallery):
         # Finally save those samples on a dictionary
         frame_samples_per_id[id] = frame_sample_per_id
     return frame_samples_per_id
+
+
+def get_local_ip_address():
+    """
+    Retrieves the IP address of the machine on the local network.
+
+    This function creates a UDP socket and connects to an external IP address 
+    (e.g., 8.8.8.8, Google's public DNS server) to determine the local IP address 
+    used for the connection. This method ensures that the returned IP address is 
+    the one assigned to the machine on the local network, rather than the loopback 
+    address (127.0.0.1).
+
+    Returns:
+        str: The local IP address of the machine. If the local IP address cannot be 
+        determined, '127.0.0.1' is returned as a fallback.
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # The address used here (8.8.8.8) is Google's public DNS server.
+        # It doesn't have to be reachable, just an external address.
+        s.connect(('8.8.8.8', 1))
+        ip_address = s.getsockname()[0]
+    except Exception:
+        ip_address = '127.0.0.1'
+    finally:
+        s.close()
+    return ip_address
