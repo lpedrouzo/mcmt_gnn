@@ -54,6 +54,12 @@ def load_config(config_path:str, task_name:str):
             task_config = config[task_name] # Task-specific params
         else:
             task_config = None
+    # Generate additional configuration parameters based on configured values
+    _,common_config['video_format'] = os.path.splitext(common_config['video_filename'])
+    common_config['sc_preds_filename'] = os.path.basename(common_config['preds_path'])
+    common_config['sequences_to_process'] = common_config['train_sequences'] + common_config['test_sequences']
+    common_config['gt_filename'] = os.path.basename(common_config['annotations_path'])
+
     return common_config, task_config
 
 
