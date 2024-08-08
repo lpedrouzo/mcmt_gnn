@@ -5,6 +5,7 @@ sys.path.insert(1, osp.abspath('.'))
 import yaml
 import torch
 import torch_geometric.transforms as T
+import traceback
 import mlflow
 import optuna
 import pandas as pd
@@ -19,6 +20,7 @@ from torch.optim.lr_scheduler import StepLR, LambdaLR
 
 from models.mcmt.rgnn import MOTMPNet
 from models.mcmt.gallery_rgnn import GalleryMOTMPNet
+from modules.data_processor.utils import load_config, get_local_ip_address
 from modules.torch_dataset.object_graph_reid_precomp import ObjectGraphREIDPrecompDataset
 from modules.torch_dataset.object_graph_gallery_precomp import ObjectGraphGalleryPrecompDataset
 from modules.tuning.epoch_functions import test_func_multiclass, train_func
@@ -29,7 +31,7 @@ from modules.data_processor.annotations_processor import AnnotationsProcessor
 from modules.tuning.trial_helpers import update_gnn_config, get_or_create_experiment, warmup_lr, define_gallery_gnn_config
 
 
-def trainable_function(task_config, 
+def trainable_function(common_config, 
                        experiment_params, 
                        search_space, 
                        gnn_arch, 
@@ -51,17 +53,17 @@ def trainable_function(task_config,
     """
 
     # Task parameters
-    sequence_path = task_config['sequence_path']
-    test_sequence = task_config['test_sequence']
-    gt_filename = task_config['gt_filename']
-    sct_filename = task_config['sct_filename']
+    sequence_path = common_config['sequence_path']
+    test_sequences = common_config['test_sequences']
+    gt_filename = os.path.splitext(common_config['gt_filename'])[0] + common_config['filtering_suffix'] + os.path.splitext(common_config['gt_filename'])[1]
+    sct_filename = os.path.splitext(common_config['sc_preds_filename'])[0] + common_config['filtering_suffix'] + os.path.splitext(common_config['sc_preds_filename'])[1]
 
     # Search space sampling
     config = {
         param_key: trial.suggest_categorical(param_key, param_space)\
             for param_key, param_space in search_space.items()
     }
-    config['eval_metric'] = task_config['eval_metric']
+    config['eval_metric'] = experiment_params['eval_metric']
     config['trial_number'] = trial.number
 
     with mlflow.start_run(experiment_id=experiment_id, 
@@ -75,7 +77,7 @@ def trainable_function(task_config,
         mlflow.set_tags({
             "sct_filename": sct_filename,
             "gt_filename": gt_filename,
-            "test_sequence": test_sequence,
+            "test_sequences": test_sequences,
             "toggle_gnn_update": toggles['modify_gnn_config'],
             "enable_negative_sampling": toggles['enable_negative_sampling'],
             "enable_dynamic_weights": toggles['enable_dynamic_weights']
@@ -89,7 +91,7 @@ def trainable_function(task_config,
 
         # Instantiation of the dataset objects
         train_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
-                                      sequence_names=["S01", "S03", "S04"],
+                                      sequence_names=common_config['train_sequences'],
                                       annotations_filename=gt_filename,
                                       num_ids_per_graph=config['num_ids_per_graph'],
                                       return_dataframes=False,
@@ -98,9 +100,9 @@ def trainable_function(task_config,
                                       graph_transform=T.ToUndirected())
 
         val_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
-                                    sequence_names=["S02"],
+                                    sequence_names=common_config['test_sequences'],
                                     annotations_filename=gt_filename,
-                                    num_ids_per_graph=-1,
+                                    num_ids_per_graph=-1, # all IDs are used to build the graph 
                                     return_dataframes=False,
                                     graph_transform=T.ToUndirected())
 
@@ -175,14 +177,14 @@ def trainable_function(task_config,
         # Start the multi-camera association
         data_df = AnnotationsProcessor(sequence_path=sequence_path, 
                                     annotations_filename=sct_filename)\
-                                    .consolidate_annotations([test_sequence], ["frame", "camera"])
+                                    .consolidate_annotations(test_sequences, ["frame", "camera"])
 
         gt_df = AnnotationsProcessor(sequence_path=sequence_path, 
                                     annotations_filename=gt_filename)\
-                                    .consolidate_annotations([test_sequence], ["frame", "camera"])
+                                    .consolidate_annotations(test_sequences, ["frame", "camera"])
 
         val_dataset = ObjectDataset(sequence_path_prefix=sequence_path,
-                                    sequence_names=[test_sequence],
+                                    sequence_names=test_sequences,
                                     annotations_filename=sct_filename,
                                     num_ids_per_graph=-1,
                                     return_dataframes=True,
@@ -278,36 +280,35 @@ def trainable_function(task_config,
 
         }), "prediction_scores.txt")
 
-    return metrics['macro_f1_score']
+    return metrics[config['eval_metric']]
 
 
+def main_training_hp_tuning(config_filepath:str="config/configuration.yml")->None:
+    """
 
-if __name__ == '__main__':
+    Args:
+        config_filepath (str, optional): _description_. Defaults to "config/configuration.yml".
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    common_config, task_config = load_config(config_filepath, "06_hyperparameter_tuning")
 
-    print("Loading configuration file")
-    with open("config/tuning.yml", "r") as config_file:
-        yaml_file = yaml.safe_load(config_file)['06_hyperparameter_tuning']
-        task_config = yaml_file['dataset_params']
-        experiment_params = yaml_file['experiment_params']
-        search_space = yaml_file['search_space']
-        toggles = yaml_file['hyperparam_toggles']
-    
-    print("Loading GNN default config")
-    with open("config/training_rgcnn.yml", "r") as config_file:
-        config = yaml.safe_load(config_file)
-        gnn_arch = config["gnn_arch"]
+    experiment_params = task_config['experiment_params']
+    search_space = task_config['search_space']
+    gnn_arch = task_config["gnn_arch"]
+    toggles = task_config['hyperparam_toggles']
 
-    mlflow.set_tracking_uri("http://192.168.23.226:5000")
+    # Mlflow runs locally, the port can be configured 
+    ip_address = get_local_ip_address()
+    mlflow.set_tracking_uri(f"http://{ip_address}:{experiment_params['port']}")
     
     # Set the experiment as the annotations name plus the experiment block id
-    experiment_name = task_config['sct_filename'].replace('.txt', '')\
+    experiment_name = common_config['sc_preds_filename'].replace('.txt', '')\
                       + "_" + experiment_params['experiment_name']
     experiment_id = get_or_create_experiment(experiment_name)
     
     # Insert the task config parameters into the trainable function
     trainable = partial(trainable_function, 
-                        task_config, 
+                        common_config, 
                         experiment_params,
                         search_space, 
                         gnn_arch, 
@@ -329,5 +330,14 @@ if __name__ == '__main__':
 
 
     # Execute the hyperparameter optimization trials.
-    study.optimize(trainable, n_trials=experiment_params['num_trials'])
+    try:
+        study.optimize(trainable, n_trials=experiment_params['num_trials'])
+    except ValueError as e:
+        if "CategoricalDistribution does not support dynamic value space" in str(e):
+            print("This experiment name has already been used for another configuration. Either configure the exact same parameters in 'search_space' block in the configuration file or change the name of the experiment in the configuration file.")
+        else:
+            traceback.print_exc()
+
+if __name__ == '__main__':
+    main_training_hp_tuning()
 
