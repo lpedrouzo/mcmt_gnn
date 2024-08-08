@@ -153,13 +153,11 @@ def trainable_function(common_config,
             # Prepare for a new epoch if trial is not pruned
             train_dataloader.dataset.on_epoch_end()
 
-        
-        # Save the model checkpoint
-        checkpoint_path = f"model_checkpoint_trial_{trial.number}.pt"
-        torch.save(gnn.state_dict(), checkpoint_path)
-
-        # Log the model checkpoint to MLflow
-        mlflow.log_artifact(checkpoint_path)
+        # Log the model to MLflow
+        mlflow.pytorch.log_model(
+            pytorch_model=gnn,
+            artifact_path="gnn-model"
+        )
 
         # Save artifacts to be picked up by mlflow
         tsne = tsne2d_scatterplot(node_feats.cpu(), 
