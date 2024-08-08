@@ -1,0 +1,135 @@
+common_params:
+  sequence_path: "datasets/AIC20/"  # Root directory where preprocessed dataset files are/will be stored
+  train_sequences: ["S01", "S03", "S04"] # List of directory names (sequence names) in 'train' folder in the raw AIC dataset 
+  test_sequences: ["S02"] # List of directory names (sequence names) in 'validation' folder in the raw AIC dataset 
+  video_filename: 'vdo.avi' #  Name of the video files of each camera, with extension
+  # Relative paths to annotations with respect to <sequence_path>/<camera_name>/
+  preds_path: "mtsc/mtsc_tc_yolo3.txt"  # Path (relative to each camera folder in the raw AIC dataset directory) to the single camera tracking file to be used
+  annotations_path: "gt/gt.txt" # Path (relative to each camera folder in the raw AIC dataset directory) to the ground truth file to be used
+  filtering_suffix: '_filtered' # Suffix to add to the annotations filenames after step 04
+
+01_prep_videos_annotations:
+  original_aic_dataset_path: "datasets/raw/AIC20" # Location of original AIC dataset root folder 
+  # Partitions to process
+  dataset_partitions: # Partitions are folders inside the raw dataset
+    - train
+    - validation
+  roi_filename: 'roi.jpg'  # Name of the ROI file of each camera, with extension 
+
+03_preprocess_annotations:
+  sort_column_name: 'frame' # Annotation files contents are sorted by this variable in ascending order. (Possible variables:  frame, id, xmin, ymin, width, height, label) 
+
+04_filter_sc_tracking:
+  # Even if all filtering is disabled, the name of the output annotation files will always be xxx_{suffix}.txt 
+  filter_gt: true # Whether to filter GT detections with the configuration below 
+  filter_sct: true # Whether to filter SCT detections with the configuration below   
+  min_bb_area : 750  #  Minimum area of the bounding box (in pixels²) to consider the detection
+  filter_frame_bounds: false # Whether to exclude detections from the margins of the frame (10% outer boundaries)
+  filter_roi: true # Whether to exclude detections outside of ROI of each camera 
+
+05_extract_reid_embeddings:
+  max_detections_per_df: 5000 # Number of detections in the dataframes to process at once
+  model_type: 'resnet' # Model architecture of the ReID 
+  model_path: 'models/reid/resnet101_ibn_a_2.pth' # Path (relavide to tmcmt_gnn root folder) 
+  cnn_img_size: [384, 384]  # Size of the input image for the ReID network 
+  img_batch_size: 300 # Batch size for ReID computation 
+  augmentation: false # Whether to perform data augmentation to the image crops fed to the ReID network
+  add_detection_id: true # Whether to add detection ids as first column of embeddings 
+
+05b_extract_galleries:
+  frames_per_gallery: 20 # Maximum number of frames to be added to the gallery for a camera video
+
+06_hyperparameter_tuning:
+  experiment_params:
+    num_trials: 1 # Number of times the same configuration is run
+    experiment_name: "sample_experiment" # Identifier of the MLFlow experiment 
+    sampler: "" # Sampler for optuna HP tuning, it can be "grid" or "" (for default optuna samplers)
+    port: 5000  # Port for MLFlow (Mlflow is run locally) 
+    eval_metric: macro_f1_score # Metric to maximize by optuna. One from: macro_f1_score, precision, recall, f1_class0, precision_class0, recall_class0, f1_class1, precision_class1, recall_class1, accuracy
+  hyperparam_toggles:
+    modify_gnn_config: gallery_gnn # all, gallery_gnn 
+    enable_negative_sampling: True # If true, negative edge sampling is done using the ration from 'ratio_neg_links_graph' configuration parameter in 'search_space' block
+    enable_dynamic_weights: False # If true, the loss function used implements class weighting based on the number of samples of each edge class 
+  
+  # Default configuration parameters for the GNN architecture. The ones that can be modified for the HP search are shown in 'search_space' block below
+  gnn_arch:
+    node_agg_fn: 'sum'
+    num_enc_steps: 1  
+    num_class_steps: 1 
+    reattach_initial_nodes: False  
+    reattach_initial_edges: False 
+
+    gallery_combinator: # To disable, replace the dictionary with off value.
+      layer: gru  # combinator by default 
+      combinator_feature_size: 2048 # dimension of every vector in gallery
+      combinator_output_size: 2048 # Dimension of the resulting embedding
+      frames_per_gallery: 20
+      combinator_num_gru_layers: 1  # number of GRU layers for gallery combination, by default 
+
+    encoder_feats_dict:
+      edges:
+        edge_in_dim: 2 
+        edge_fc_dims: [4] 
+        edge_out_dim: 4 
+
+      nodes:
+        node_in_dim: 2048
+        node_fc_dims: [1024,512, 128]
+        node_out_dim: 32
+        dropout_p: 0.1
+        use_batchnorm: True
+
+    # MPN edge update
+    edge_model_feats_dict:
+      fc_dims: [4] 
+      dropout_p: 0.1
+      use_batchnorm: True
+
+    # MPN node update
+    node_model_feats_dict:
+      fc_dims: [32]  
+      dropout_p: 0.1
+      use_batchnorm: True
+
+    # Classifier
+    classifier_feats_dict:
+      edge_in_dim: 4 
+      edge_fc_dims: [] 
+      edge_out_dim: 2
+      dropout_p: 0
+      use_batchnorm: False
+      is_classifier: True
+
+  search_space:
+    # Each of the following variables are lists of possible values of each parameter to do the hyperparameter search 
+
+    # Dataset related
+    ratio_neg_links_graph: [0.7] # 1 means original ratio
+    num_ids_per_graph: [100]
+
+    # Training related
+    lr: [0.005]
+    epochs: [200] 
+    warmup_duration: [3] # 0 is no warmup
+    optimizer_momentum: [0.8] # 0 is no momentum
+    lr_scheduler_step_size: [0] # 0 is scheduler off
+
+
+    # GNN architecture
+    message_passing_steps: [1]
+    node_enc_fc_layers: [1] # Feat num decrease /2 every layer
+    edge_enc_fc_layers: [2] # Feat num increase x2 every layer
+    node_update_fc_layers: [1] # Channels icnrease x2 every layer
+    edge_update_fc_layers: [1] # Channels increase x2 every layer
+    edge_update_units: [12]
+
+    # Gallery combinator
+    input_format: ['gallery']  # gallery, or nothing. Empty input format --> will not use galleries
+    gallery_combination: ['gru'] # , 'mlp', 'linear']  # off, gru, mlp, linear 
+    combinator_num_layers: [2] # Number of layers in the gallery combination 
+
+    # Postprocessing toggles
+    pruning: [True]
+    spliting: [True]
+
+  
