@@ -12,36 +12,38 @@ from modules.data_processor.utils import load_config
 
 
 
-def main_extract_galleries(config_filepath:str="config/preprocessing.yml")->None:
-    common_config, task_config = load_config(config_filepath, "05b_extract_galleries")
+def main_extract_galleries(config_filepath:str="config/configuration.yml")->None:
+    common_config, task_config = load_config(config_filepath, "05b_extract_galleries") 
+    filtered_gt = os.path.splitext(common_config['gt_filename'])[0] + common_config['filtering_suffix'] + os.path.splitext(common_config['gt_filename'])[1]
+    filtered_sct = os.path.splitext(common_config['sc_preds_filename'])[0] + common_config['filtering_suffix'] + os.path.splitext(common_config['sc_preds_filename'])[1]
     
     print("Extracting ground truth gallery embeddings for training sequences")
-    for sequence_name in task_config['train_sequences']:
+    for sequence_name in common_config['train_sequences']:
         print(f"Working on {sequence_name}")
 
         emb_proc = EmbeddingsProcessor(sequence_path=common_config['sequence_path'], 
                                        sequence_name=sequence_name, 
-                                       annotations_filename=task_config['annotations_filename'],
+                                       annotations_filename=filtered_gt,
                                        device='cpu')
         emb_proc.generate_embedding_galleries_single_camera(task_config["frames_per_gallery"])
     
     print("Extracting ground truth gallery embeddings for testing sequences")
-    for sequence_name in task_config['test_sequences']:
+    for sequence_name in common_config['test_sequences']:
         print(f"Working on {sequence_name}")
 
         emb_proc = EmbeddingsProcessor(sequence_path=common_config['sequence_path'], 
                                        sequence_name=sequence_name, 
-                                       annotations_filename=task_config['annotations_filename'],
+                                       annotations_filename=filtered_gt,
                                        device='cpu')
         emb_proc.generate_embedding_galleries_single_camera(task_config["frames_per_gallery"])
     
     print("Extracting SCT gallery embeddings for testing sequences")
-    for sequence_name in task_config['test_sequences']:
+    for sequence_name in common_config['test_sequences']:
         print(f"Working on {sequence_name}")
         
         emb_proc = EmbeddingsProcessor(sequence_path=common_config['sequence_path'], 
                                        sequence_name=sequence_name, 
-                                       annotations_filename=task_config['test_annotations_filename'],
+                                       annotations_filename=filtered_sct,
                                        device='cpu')
         emb_proc.generate_embedding_galleries_single_camera(task_config["frames_per_gallery"])
 

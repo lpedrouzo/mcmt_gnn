@@ -14,7 +14,7 @@ device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cp
 
 
 
-def main_extract_reid_embeddings(config_filepath:str="config/preprocessing.yml")->None:
+def main_extract_reid_embeddings(config_filepath:str="config/configuration.yml")->None:
     """Runs step 05: extracting ReID embeddings of every detection in the dataset, according to the yml configuration file
 
     The yml file must have the following configuration parameters:
@@ -52,41 +52,46 @@ def main_extract_reid_embeddings(config_filepath:str="config/preprocessing.yml")
             transforms.RandomRotation(degrees=0.15),
             transforms.RandomPerspective(distortion_scale=0.25)
         ])
+    
+    for annotation in [common_config['gt_filename'], common_config['sc_preds_filename']]:
+        # always use the annotation files already filtered (even if they are actually the same as the original) 
+        annotations_filename = os.path.splitext(annotation)[0] + common_config['filtering_suffix'] + os.path.splitext(annotation)[1]
+        print(f"Extracting embeddings for {annotations_filename} files ...")
 
-    print("Extracting embeddings for training sequences")
-    # Iterate over all of the sequences
-    for sequence_name in task_config['train_sequences']:
-        print(f"Working on {sequence_name}")
+        print("Extracting embeddings for training sequences")
+        # Iterate over all of the sequences
+        for sequence_name in common_config['train_sequences']:
+            print(f"Working on {sequence_name}")
 
-        # Instantiate the embeddings processor for train sequences
-        emb_proc = EmbeddingsProcessor(img_batch_size=task_config['img_batch_size'],
-                                       img_size=task_config['cnn_img_size'],
-                                       cnn_model=model,
-                                       sequence_path=common_config['sequence_path'],
-                                       sequence_name=sequence_name,
-                                       annotations_filename=task_config['annotations_filename']
-                                    )
-        
-        emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], 
-                                  mode='train', 
-                                  augmentation=augmentation if task_config["augmentation"] else None,
-                                  add_detection_id=task_config["add_detection_id"])
+            # Instantiate the embeddings processor for train sequences
+            emb_proc = EmbeddingsProcessor(img_batch_size=task_config['img_batch_size'],
+                                        img_size=task_config['cnn_img_size'],
+                                        cnn_model=model,
+                                        sequence_path=common_config['sequence_path'],
+                                        sequence_name=sequence_name,
+                                        annotations_filename=annotations_filename
+                                        )
+            
+            emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], 
+                                    mode='train', 
+                                    augmentation=augmentation if task_config["augmentation"] else None,
+                                    add_detection_id=task_config["add_detection_id"])
 
-    print("Extracting embeddings for testing sequences")
-    for sequence_name in task_config['test_sequences']:
-        print(f"Working on {sequence_name}")
+        print("Extracting embeddings for testing sequences")
+        for sequence_name in common_config['test_sequences']:
+            print(f"Working on {sequence_name}")
 
-         # Instantiate the embeddings processor for test sequences
-        emb_proc = EmbeddingsProcessor(img_batch_size=task_config['img_batch_size'],
-                                       img_size=task_config['cnn_img_size'],
-                                       cnn_model=model,
-                                       sequence_path=common_config['sequence_path'],
-                                       sequence_name=sequence_name,
-                                       annotations_filename=task_config['annotations_filename'])
-        
-        emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], 
-                                  mode='test',
-                                  add_detection_id=task_config['add_detection_id'])
+            # Instantiate the embeddings processor for test sequences
+            emb_proc = EmbeddingsProcessor(img_batch_size=task_config['img_batch_size'],
+                                        img_size=task_config['cnn_img_size'],
+                                        cnn_model=model,
+                                        sequence_path=common_config['sequence_path'],
+                                        sequence_name=sequence_name,
+                                        annotations_filename=annotations_filename)
+            
+            emb_proc.store_embeddings(max_detections_per_df=task_config['max_detections_per_df'], 
+                                    mode='test',
+                                    add_detection_id=task_config['add_detection_id'])
 
 
 if __name__ == '__main__':

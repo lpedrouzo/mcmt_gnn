@@ -23,7 +23,7 @@ annotations_schema = {
 
 
 
-def main_preprocess_annotations(config_filepath:str="config/preprocessing.yml")->None:
+def main_preprocess_annotations(config_filepath:str="config/configuration.yml")->None:
     """Runs step 03: preprocessing annotations using the configuration from the yml file.
 
     The yml file must have the following configuration parameters:
@@ -43,13 +43,13 @@ def main_preprocess_annotations(config_filepath:str="config/preprocessing.yml")-
     common_config, task_config = load_config(config_filepath, "03_preprocess_annotations")
 
     # Iterate over all of the sequences
-    for sequence_name in task_config['sequences_to_process']:
+    for sequence_name in common_config['sequences_to_process']:
 
-        if task_config['gt_filename']:
+        if common_config['gt_filename']:
             # Instantiate the processor for the ground truth
             det_proc = AnnotationsProcessor(sequence_path=common_config['sequence_path'],
                                             sequence_name=sequence_name,
-                                            annotations_filename=task_config['gt_filename'],
+                                            annotations_filename=common_config['gt_filename'],
                                             delimiter=',')
 
             # The annotations are loading directly from path and stored back in the backend
@@ -62,11 +62,11 @@ def main_preprocess_annotations(config_filepath:str="config/preprocessing.yml")-
             print("Standardizing bounding box coordinates")
             det_proc.standardize_bounding_box_columns()
         
-        if task_config['sc_preds_filename']:
+        if common_config['sc_preds_filename']:
             # Instantiate the processor for the estimated tracks
             det_proc = AnnotationsProcessor(sequence_path=common_config['sequence_path'],
                                             sequence_name=sequence_name,
-                                            annotations_filename=task_config['sc_preds_filename'],
+                                            annotations_filename=common_config['sc_preds_filename'],
                                             delimiter=',')
 
             # The annotations are loading directly from path and stored back in the backend

@@ -67,7 +67,7 @@ def process_partition(entrypoint, partition, video_path, output_dir, roi_path=No
                         move_data_to_output_folder(sequence_path, sequence_name, camera_name, annotations_path, "annotations", output_dir)
 
 
-def main_prep_videos_annotations(config_filepath:str="config/preprocessing.yml")->None:
+def main_prep_videos_annotations(config_filepath:str="config/configuration.yml")->None:
     """Runs step 01: preparing video annotations, using the configuration from the selected yml file.
 
     The yml file must have the following configuration parameters:
@@ -108,11 +108,11 @@ def main_prep_videos_annotations(config_filepath:str="config/preprocessing.yml")
 
     for partition in partitions:
         process_partition(entrypoint, partition, 
-                        task_config['video_filename'], 
+                        common_config['video_filename'], 
                         output_path_prefix,
                         task_config['roi_filename'],
-                        task_config['preds_path'], 
-                        task_config['annotations_path'])
+                        common_config['preds_path'], 
+                        common_config['annotations_path'])
 
 if __name__ == "__main__":
     main_prep_videos_annotations()

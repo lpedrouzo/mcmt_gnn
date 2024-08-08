@@ -12,7 +12,7 @@ from modules.data_processor.utils import load_config
 
 
 
-def main_filter_sc_tracking(config_filepath:str="config/preprocessing.yml")->None:
+def main_filter_sc_tracking(config_filepath:str="config/configuration.yml")->None:
     """Runs step 04: filtering annotations of validation data, based on ROI and frame bounds, as configured in yml file
 
     The yml file must have the following configuration parameters:
@@ -35,56 +35,68 @@ def main_filter_sc_tracking(config_filepath:str="config/preprocessing.yml")->Non
     common_config, task_config = load_config(config_filepath,"04_filter_sc_tracking")
 
     # Assigning variables according to the configuration definitions
-    sequences_to_filter = task_config['validation_partition']
-    for sequence_name in sequences_to_filter:
-        print("Filtering sequence ", sequence_name)
-        sequence_path_prefix = common_config['sequence_path']
-        sequence_path = osp.join(sequence_path_prefix, "annotations", sequence_name)
-        logs_path = osp.join(sequence_path_prefix, "logs", sequence_name)
-        input_annotations_filename = task_config['in_sc_preds_filename']
-        out_annotations_filename = task_config['out_sc_preds_filename']
+    sequences_to_filter = common_config['sequences_to_process']
+    for i,annotation in enumerate([common_config['gt_filename'], common_config['sc_preds_filename']]):
+        
+        dofilter = task_config['filter_gt'] if i==0 else task_config['filter_sct'] # applies filter to GT and SCT if configured 
+        print(f"{dofilter if not dofilter else ''} Filtering {annotation} annotations...")
+        task_config['in_sc_preds_filename'] = annotation
+        task_config['out_sc_preds_filename'] = os.path.splitext(annotation)[0] + common_config['filtering_suffix'] + os.path.splitext(annotation)[1]
 
-        min_bb_area = task_config['min_bb_area']
-        filter_frame_bounds = task_config['filter_frame_bounds']
-        filter_roi = task_config['filter_roi']
+        for sequence_name in sequences_to_filter:
+            print("Filtering sequence ", sequence_name)
+            sequence_path_prefix = common_config['sequence_path']
+            sequence_path = osp.join(sequence_path_prefix, "annotations", sequence_name)
+            logs_path = osp.join(sequence_path_prefix, "logs", sequence_name)
+            input_annotations_filename = task_config['in_sc_preds_filename']
+            out_annotations_filename = task_config['out_sc_preds_filename']
 
-        for camera_name in os.listdir(sequence_path):
+            min_bb_area = task_config['min_bb_area']
+            filter_frame_bounds = task_config['filter_frame_bounds']
+            filter_roi = task_config['filter_roi']
 
-            # Load annotation file 
-            in_annotations = osp.join(sequence_path, camera_name, input_annotations_filename)
-            out_annotations = osp.join(sequence_path, camera_name, out_annotations_filename)
-            annotations_df = pd.read_csv(in_annotations)
-            
-            print(f"Filtering SC track {in_annotations}. Initial len {len(annotations_df)}")
+            for camera_name in os.listdir(sequence_path):
 
-            # Load logs from script 02_extract_frames to obtain frame dimensions
-            with open(osp.join(logs_path, camera_name + '.json'), 'r') as camera_logs:
-                camera_log_data = json.load(camera_logs)
-                frame_width = camera_log_data['frame_width']
-                frame_height = camera_log_data['frame_height']
+                # Load annotation file 
+                in_annotations = osp.join(sequence_path, camera_name, input_annotations_filename)
+                out_annotations = osp.join(sequence_path, camera_name, out_annotations_filename)
+                annotations_df = pd.read_csv(in_annotations)
 
-            # Filter detections that do not have a minimum area
-            if min_bb_area:
-                annotations_df = annotations_df[(annotations_df['width'] * annotations_df['height']) >= min_bb_area]
-                print(f"Done filtering area. Len {len(annotations_df)}")
+                if not dofilter: # do not filter but save contents in corresponding file for easier processing later 
+                    annotations_df.to_csv(out_annotations)
+                    print(f"Saved original annotation at {out_annotations}")
+                    continue
+                
+                print(f"Filtering SC track {in_annotations}. Initial len {len(annotations_df)}")
 
-            # Remove detections that go out of frame boundaries
-            if filter_frame_bounds:
-                annotations_df = filter_dets_outside_frame_bounds(annotations_df, frame_width, frame_height)
-                print(f"Done filtering detections beyond boundaries. Len {len(annotations_df)}")
+                # Load logs from script 02_extract_frames to obtain frame dimensions
+                with open(osp.join(logs_path, camera_name + '.json'), 'r') as camera_logs:
+                    camera_log_data = json.load(camera_logs)
+                    frame_width = camera_log_data['frame_width']
+                    frame_height = camera_log_data['frame_height']
 
-            # If required, remove detections outside region of interest
-            if filter_roi:
-                annotations_df = remove_non_roi(sequence_path_prefix, annotations_df)
-                print(f"Done RoI filtering of detections. Len {len(annotations_df)}")
+                # Filter detections that do not have a minimum area
+                if min_bb_area:
+                    annotations_df = annotations_df[(annotations_df['width'] * annotations_df['height']) >= min_bb_area]
+                    print(f"Done filtering area. Len {len(annotations_df)}")
 
-            # Remove duplciated detections (grouped by id, frame, camera)
-            annotations_df = remove_duplicated_detections(annotations_df)
-            print(f"Done removing duplicated detections. Len {len(annotations_df)}")
-            
-            # Save the filtered annotations
-            annotations_df.to_csv(out_annotations)
-            print(f"Saved processed annotation at {out_annotations}")
+                # Remove detections that go out of frame boundaries
+                if filter_frame_bounds:
+                    annotations_df = filter_dets_outside_frame_bounds(annotations_df, frame_width, frame_height)
+                    print(f"Done filtering detections beyond boundaries. Len {len(annotations_df)}")
+
+                # If required, remove detections outside region of interest
+                if filter_roi:
+                    annotations_df = remove_non_roi(sequence_path_prefix, annotations_df)
+                    print(f"Done RoI filtering of detections. Len {len(annotations_df)}")
+
+                # Remove duplciated detections (grouped by id, frame, camera)
+                annotations_df = remove_duplicated_detections(annotations_df)
+                print(f"Done removing duplicated detections. Len {len(annotations_df)}")
+                
+                # Save the filtered annotations
+                annotations_df.to_csv(out_annotations)
+                print(f"Saved processed annotation at {out_annotations}")
 
 if __name__ == "__main__":
     main_filter_sc_tracking()
